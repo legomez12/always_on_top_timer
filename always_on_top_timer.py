@@ -4,11 +4,14 @@ import ctypes
 from ctypes import wintypes
 
 from PySide6.QtCore import Qt, QTimer, QAbstractNativeEventFilter, QCoreApplication
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QWidget
 
 
-user32 = ctypes.windll.user32
+if sys.platform == "win32":
+    user32 = ctypes.WinDLL("user32")
+else:
+    user32 = None
 
 WM_HOTKEY = 0x0312
 
@@ -53,9 +56,9 @@ class TimerWindow(QWidget):
         super().__init__()
 
         self.setWindowTitle("Always On Top Timer")
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
 
-        self.elapsed_seconds = 0
+        self.elapsed_seconds = 0.0
         self.running = False
         self.last_start_time = None
 
@@ -64,7 +67,7 @@ class TimerWindow(QWidget):
         self.timer.timeout.connect(self.update_display)
 
         self.label = QLabel("00:00:00")
-        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.start_stop_button = QPushButton("Start / Stop")
         self.reset_button = QPushButton("Reset")
@@ -83,29 +86,59 @@ class TimerWindow(QWidget):
         self.setLayout(main_layout)
         self.resize(420, 220)
 
-        self.hotkey_filter = GlobalHotkeyFilter(self)
-        QCoreApplication.instance().installNativeEventFilter(self.hotkey_filter)
+        self.setup_shortcuts()
+
+        if user32 is not None:
+            self.hotkey_filter = GlobalHotkeyFilter(self)
+            app_instance = QCoreApplication.instance()
+            if app_instance is not None:
+                app_instance.installNativeEventFilter(self.hotkey_filter)
+        else:
+            self.hotkey_filter = None
 
         self.register_hotkeys()
+        QTimer.singleShot(0, self.enforce_always_on_top)
         self.update_font_size()
 
-    def register_hotkeys(self):
-        # Ctrl + Alt + S = Start / Stop
-        # Ctrl + Alt + R = Reset
-        # Ctrl + Alt + Q = Quit
+    def setup_shortcuts(self):
+        self.toggle_shortcut = QShortcut(QKeySequence("Ctrl+Shift+S"), self)
+        self.reset_shortcut = QShortcut(QKeySequence("Ctrl+Shift+R"), self)
+        self.quit_shortcut = QShortcut(QKeySequence("Ctrl+Shift+Q"), self)
 
-        user32.RegisterHotKey(None, 1, MOD_CONTROL | MOD_ALT, VK_S)
-        user32.RegisterHotKey(None, 2, MOD_CONTROL | MOD_ALT, VK_R)
-        user32.RegisterHotKey(None, 3, MOD_CONTROL | MOD_ALT, VK_Q)
+        self.toggle_shortcut.activated.connect(self.toggle_timer)
+        self.reset_shortcut.activated.connect(self.reset_timer)
+        self.quit_shortcut.activated.connect(self.close)
+
+    def enforce_always_on_top(self):
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def register_hotkeys(self):
+        # Ctrl + Shift + S = Start / Stop
+        # Ctrl + Shift + R = Reset
+        # Ctrl + Shift + Q = Quit
+
+        if user32 is None:
+            return
+
+        user32.RegisterHotKey(None, 1, MOD_CONTROL | MOD_SHIFT, VK_S)
+        user32.RegisterHotKey(None, 2, MOD_CONTROL | MOD_SHIFT, VK_R)
+        user32.RegisterHotKey(None, 3, MOD_CONTROL | MOD_SHIFT, VK_Q)
 
     def unregister_hotkeys(self):
+        if user32 is None:
+            return
+
         user32.UnregisterHotKey(None, 1)
         user32.UnregisterHotKey(None, 2)
         user32.UnregisterHotKey(None, 3)
 
     def toggle_timer(self):
         if self.running:
-            self.elapsed_seconds += time.monotonic() - self.last_start_time
+            if self.last_start_time is not None:
+                self.elapsed_seconds += time.monotonic() - self.last_start_time
             self.running = False
             self.timer.stop()
             self.start_stop_button.setText("Start")
@@ -128,7 +161,7 @@ class TimerWindow(QWidget):
     def update_display(self):
         total_seconds = self.elapsed_seconds
 
-        if self.running:
+        if self.running and self.last_start_time is not None:
             total_seconds += time.monotonic() - self.last_start_time
 
         hours = int(total_seconds // 3600)
