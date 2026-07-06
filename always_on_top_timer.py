@@ -43,7 +43,7 @@ SS_CENTER = 0x00000001
 
 SW_SHOW = 5
 
-WM_CREATE = 0x0001
+WM_CLOSE = 0x0010
 WM_DESTROY = 0x0002
 WM_SIZE = 0x0005
 WM_COMMAND = 0x0111
@@ -73,8 +73,10 @@ TIMER_INTERVAL_MS = 100
 BTN_TOGGLE_ID = 1001
 BTN_RESET_ID = 1002
 
-DEFAULT_WIDTH = 520
-DEFAULT_HEIGHT = 260
+CONTROL_DEFAULT_WIDTH = 520
+CONTROL_DEFAULT_HEIGHT = 260
+DISPLAY_DEFAULT_WIDTH = 520
+DISPLAY_DEFAULT_HEIGHT = 180
 
 
 class WNDCLASSEXW(ctypes.Structure):
@@ -190,35 +192,130 @@ def configure_winapi_signatures():
     gdi32.GetDeviceCaps.argtypes = [wintypes.HDC, ctypes.c_int]
     gdi32.GetDeviceCaps.restype = ctypes.c_int
 
+    user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT)]
+    user32.GetClientRect.restype = wintypes.BOOL
+
+    user32.MoveWindow.argtypes = [
+        wintypes.HWND,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.BOOL,
+    ]
+    user32.MoveWindow.restype = wintypes.BOOL
+
+    user32.SetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
+    user32.SetWindowTextW.restype = wintypes.BOOL
+
+    user32.DestroyWindow.argtypes = [wintypes.HWND]
+    user32.DestroyWindow.restype = wintypes.BOOL
+
+    user32.PostQuitMessage.argtypes = [ctypes.c_int]
+    user32.PostQuitMessage.restype = None
+
+    user32.GetDC.argtypes = [wintypes.HWND]
+    user32.GetDC.restype = wintypes.HDC
+
+    user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    user32.ReleaseDC.restype = ctypes.c_int
+
+    gdi32.CreateFontW.argtypes = [
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPCWSTR,
+    ]
+    gdi32.CreateFontW.restype = wintypes.HFONT
+
+    gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+    gdi32.DeleteObject.restype = wintypes.BOOL
+
+
+class TimerModel:
+    def __init__(self):
+        self.elapsed_seconds = 0.0
+        self.running = False
+        self.last_start_monotonic = None
+
+    def toggle(self):
+        if self.running:
+            if self.last_start_monotonic is not None:
+                self.elapsed_seconds += time.monotonic() - self.last_start_monotonic
+            self.running = False
+            self.last_start_monotonic = None
+        else:
+            self.running = True
+            self.last_start_monotonic = time.monotonic()
+
+    def reset(self):
+        self.elapsed_seconds = 0.0
+        if self.running:
+            self.last_start_monotonic = time.monotonic()
+
+    def total_seconds(self):
+        total = self.elapsed_seconds
+        if self.running and self.last_start_monotonic is not None:
+            total += time.monotonic() - self.last_start_monotonic
+        return int(total)
+
+    def formatted_time(self):
+        total_seconds = self.total_seconds()
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        return f"{hours:02}:{minutes:02}:{seconds:02}"
+
 
 class TimerApp:
     def __init__(self):
         self.hinstance = kernel32.GetModuleHandleW(None)
         self.class_name = "AlwaysOnTopTimerWindow"
-        self.title = "Always On Top Timer"
+        self.control_title = "Always On Top Timer - Control"
+        self.display_title = "Always On Top Timer - Display"
 
-        self.hwnd = None
-        self.label_hwnd = None
+        self.control_hwnd = None
+        self.display_hwnd = None
+
+        self.control_label_hwnd = None
+        self.display_label_hwnd = None
         self.toggle_hwnd = None
         self.reset_hwnd = None
-        self.hfont = None
 
-        self.elapsed_seconds = 0.0
-        self.running = False
-        self.last_start_monotonic = None
+        self.control_hfont = None
+        self.display_hfont = None
+
+        self.model = TimerModel()
+
+        self.hotkeys_registered = False
+        self.shutting_down = False
+        self.alive_windows = 0
 
         self._wndproc_ref = WNDPROC(self.wnd_proc)
 
     def run(self):
         self.register_window_class()
-        self.create_main_window()
+        self.create_windows()
         self.create_child_controls()
-        self.register_hotkeys()
-        self.set_always_on_top()
-        user32.SetTimer(self.hwnd, TIMER_ID, TIMER_INTERVAL_MS, None)
 
-        user32.ShowWindow(self.hwnd, SW_SHOW)
-        user32.UpdateWindow(self.hwnd)
+        self.register_hotkeys()
+        self.enforce_always_on_top()
+        user32.SetTimer(self.control_hwnd, TIMER_ID, TIMER_INTERVAL_MS, None)
+
+        user32.ShowWindow(self.control_hwnd, SW_SHOW)
+        user32.UpdateWindow(self.control_hwnd)
+        user32.ShowWindow(self.display_hwnd, SW_SHOW)
+        user32.UpdateWindow(self.display_hwnd)
 
         msg = wintypes.MSG()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
@@ -245,27 +342,47 @@ class TimerApp:
             err = ctypes.get_last_error()
             raise OSError(err, "RegisterClassExW failed")
 
-    def create_main_window(self):
-        self.hwnd = user32.CreateWindowExW(
+    def create_windows(self):
+        self.control_hwnd = user32.CreateWindowExW(
             0,
             self.class_name,
-            self.title,
+            self.control_title,
             WS_OVERLAPPEDWINDOW | WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            DEFAULT_WIDTH,
-            DEFAULT_HEIGHT,
+            CONTROL_DEFAULT_WIDTH,
+            CONTROL_DEFAULT_HEIGHT,
             None,
             None,
             self.hinstance,
             None,
         )
-        if not self.hwnd:
+        if not self.control_hwnd:
             err = ctypes.get_last_error()
-            raise OSError(err, "CreateWindowExW failed")
+            raise OSError(err, "CreateWindowExW failed for control window")
 
-    def create_child_controls(self):
-        self.label_hwnd = user32.CreateWindowExW(
+        self.display_hwnd = user32.CreateWindowExW(
+            0,
+            self.class_name,
+            self.display_title,
+            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            DISPLAY_DEFAULT_WIDTH,
+            DISPLAY_DEFAULT_HEIGHT,
+            None,
+            None,
+            self.hinstance,
+            None,
+        )
+        if not self.display_hwnd:
+            err = ctypes.get_last_error()
+            raise OSError(err, "CreateWindowExW failed for display window")
+
+        self.alive_windows = 2
+
+    def create_timer_label(self, parent_hwnd):
+        label_hwnd = user32.CreateWindowExW(
             0,
             "STATIC",
             "00:00:00",
@@ -274,14 +391,19 @@ class TimerApp:
             0,
             100,
             100,
-            self.hwnd,
+            parent_hwnd,
             None,
             self.hinstance,
             None,
         )
-        if not self.label_hwnd:
+        if not label_hwnd:
             err = ctypes.get_last_error()
             raise OSError(err, "CreateWindowExW failed for STATIC control")
+        return label_hwnd
+
+    def create_child_controls(self):
+        self.control_label_hwnd = self.create_timer_label(self.control_hwnd)
+        self.display_label_hwnd = self.create_timer_label(self.display_hwnd)
 
         self.toggle_hwnd = user32.CreateWindowExW(
             0,
@@ -292,7 +414,7 @@ class TimerApp:
             0,
             100,
             32,
-            self.hwnd,
+            self.control_hwnd,
             ctypes.c_void_p(BTN_TOGGLE_ID),
             self.hinstance,
             None,
@@ -310,7 +432,7 @@ class TimerApp:
             0,
             100,
             32,
-            self.hwnd,
+            self.control_hwnd,
             ctypes.c_void_p(BTN_RESET_ID),
             self.hinstance,
             None,
@@ -319,22 +441,28 @@ class TimerApp:
             err = ctypes.get_last_error()
             raise OSError(err, "CreateWindowExW failed for Reset button")
 
-        self.update_layout()
-        self.update_display()
+        self.update_control_layout()
+        self.update_display_layout()
+        self.update_timer_labels()
+        self.update_toggle_button()
 
     def register_hotkeys(self):
-        user32.RegisterHotKey(self.hwnd, HOTKEY_TOGGLE, MOD_CONTROL | MOD_SHIFT, VK_S)
-        user32.RegisterHotKey(self.hwnd, HOTKEY_RESET, MOD_CONTROL | MOD_SHIFT, VK_R)
-        user32.RegisterHotKey(self.hwnd, HOTKEY_QUIT, MOD_CONTROL | MOD_SHIFT, VK_Q)
+        user32.RegisterHotKey(self.control_hwnd, HOTKEY_TOGGLE, MOD_CONTROL | MOD_SHIFT, VK_S)
+        user32.RegisterHotKey(self.control_hwnd, HOTKEY_RESET, MOD_CONTROL | MOD_SHIFT, VK_R)
+        user32.RegisterHotKey(self.control_hwnd, HOTKEY_QUIT, MOD_CONTROL | MOD_SHIFT, VK_Q)
+        self.hotkeys_registered = True
 
     def unregister_hotkeys(self):
-        user32.UnregisterHotKey(self.hwnd, HOTKEY_TOGGLE)
-        user32.UnregisterHotKey(self.hwnd, HOTKEY_RESET)
-        user32.UnregisterHotKey(self.hwnd, HOTKEY_QUIT)
+        if not self.hotkeys_registered:
+            return
+        user32.UnregisterHotKey(self.control_hwnd, HOTKEY_TOGGLE)
+        user32.UnregisterHotKey(self.control_hwnd, HOTKEY_RESET)
+        user32.UnregisterHotKey(self.control_hwnd, HOTKEY_QUIT)
+        self.hotkeys_registered = False
 
-    def set_always_on_top(self):
+    def set_window_always_on_top(self, hwnd):
         user32.SetWindowPos(
-            self.hwnd,
+            hwnd,
             HWND_TOPMOST,
             0,
             0,
@@ -343,45 +471,41 @@ class TimerApp:
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
         )
 
-    def toggle_timer(self):
-        if self.running:
-            if self.last_start_monotonic is not None:
-                self.elapsed_seconds += time.monotonic() - self.last_start_monotonic
-            self.running = False
-            self.last_start_monotonic = None
-            user32.SetWindowTextW(self.toggle_hwnd, "Start")
-        else:
-            self.running = True
-            self.last_start_monotonic = time.monotonic()
-            user32.SetWindowTextW(self.toggle_hwnd, "Stop")
+    def enforce_always_on_top(self):
+        if self.control_hwnd:
+            self.set_window_always_on_top(self.control_hwnd)
+        if self.display_hwnd:
+            self.set_window_always_on_top(self.display_hwnd)
 
-        self.update_display()
+    def update_toggle_button(self):
+        if self.toggle_hwnd:
+            user32.SetWindowTextW(self.toggle_hwnd, "Stop" if self.model.running else "Start")
+
+    def update_timer_labels(self):
+        text = self.model.formatted_time()
+        if self.control_label_hwnd:
+            user32.SetWindowTextW(self.control_label_hwnd, text)
+        if self.display_label_hwnd:
+            user32.SetWindowTextW(self.display_label_hwnd, text)
+
+    def toggle_timer(self):
+        self.model.toggle()
+        self.update_toggle_button()
+        self.update_timer_labels()
 
     def reset_timer(self):
-        self.elapsed_seconds = 0.0
-        if self.running:
-            self.last_start_monotonic = time.monotonic()
-        self.update_display()
+        self.model.reset()
+        self.update_timer_labels()
 
-    def current_total_seconds(self):
-        total = self.elapsed_seconds
-        if self.running and self.last_start_monotonic is not None:
-            total += time.monotonic() - self.last_start_monotonic
-        return total
-
-    def update_display(self):
-        total_seconds = int(self.current_total_seconds())
-        hours = total_seconds // 3600
-        minutes = (total_seconds % 3600) // 60
-        seconds = total_seconds % 60
-        user32.SetWindowTextW(self.label_hwnd, f"{hours:02}:{minutes:02}:{seconds:02}")
-
-    def update_layout(self):
+    def get_client_size(self, hwnd):
         rect = RECT()
-        user32.GetClientRect(self.hwnd, ctypes.byref(rect))
+        user32.GetClientRect(hwnd, ctypes.byref(rect))
+        return rect.right - rect.left, rect.bottom - rect.top
 
-        width = max(320, rect.right - rect.left)
-        height = max(180, rect.bottom - rect.top)
+    def update_control_layout(self):
+        width, height = self.get_client_size(self.control_hwnd)
+        width = max(320, width)
+        height = max(180, height)
 
         padding = 12
         button_height = 34
@@ -391,7 +515,7 @@ class TimerApp:
         button_width = (width - (padding * 2) - button_spacing) // 2
 
         user32.MoveWindow(
-            self.label_hwnd,
+            self.control_label_hwnd,
             padding,
             padding,
             width - (padding * 2),
@@ -410,13 +534,47 @@ class TimerApp:
             True,
         )
 
-        self.update_label_font(width, label_height)
+        self.update_label_font(
+            self.control_hwnd,
+            self.control_label_hwnd,
+            width,
+            label_height,
+            is_control_window=True,
+        )
 
-    def update_label_font(self, width, label_height):
-        target_points = max(24, min(width // 7, label_height // 2))
-        hdc = user32.GetDC(self.hwnd)
+    def update_display_layout(self):
+        width, height = self.get_client_size(self.display_hwnd)
+        width = max(240, width)
+        height = max(120, height)
+
+        padding = 12
+
+        user32.MoveWindow(
+            self.display_label_hwnd,
+            padding,
+            padding,
+            width - (padding * 2),
+            height - (padding * 2),
+            True,
+        )
+
+        self.update_label_font(
+            self.display_hwnd,
+            self.display_label_hwnd,
+            width,
+            height,
+            is_control_window=False,
+        )
+
+    def update_label_font(self, window_hwnd, label_hwnd, width, height, is_control_window):
+        if is_control_window:
+            target_points = max(24, min(width // 7, height // 2))
+        else:
+            target_points = max(28, min(width // 6, height // 2))
+
+        hdc = user32.GetDC(window_hwnd)
         dpi = gdi32.GetDeviceCaps(hdc, 90)
-        user32.ReleaseDC(self.hwnd, hdc)
+        user32.ReleaseDC(window_hwnd, hdc)
 
         height_px = -int(target_points * dpi / 72)
 
@@ -438,10 +596,15 @@ class TimerApp:
         )
 
         if new_font:
-            old_font = self.hfont
-            self.hfont = new_font
-            user32.SendMessageW(self.label_hwnd, WM_SETFONT, self.hfont, 1)
-            if old_font:
+            if is_control_window:
+                old_font = self.control_hfont
+                self.control_hfont = new_font
+            else:
+                old_font = self.display_hfont
+                self.display_hfont = new_font
+
+            user32.SendMessageW(label_hwnd, WM_SETFONT, new_font, 1)
+            if old_font and old_font != new_font:
                 gdi32.DeleteObject(old_font)
 
     def handle_command(self, wparam):
@@ -451,17 +614,61 @@ class TimerApp:
         elif command_id == BTN_RESET_ID:
             self.reset_timer()
 
+    def cleanup_window_resources(self, hwnd):
+        if hwnd == self.control_hwnd:
+            if self.control_hfont:
+                gdi32.DeleteObject(self.control_hfont)
+                self.control_hfont = None
+            self.control_hwnd = None
+            self.control_label_hwnd = None
+            self.toggle_hwnd = None
+            self.reset_hwnd = None
+        elif hwnd == self.display_hwnd:
+            if self.display_hfont:
+                gdi32.DeleteObject(self.display_hfont)
+                self.display_hfont = None
+            self.display_hwnd = None
+            self.display_label_hwnd = None
+
+    def initiate_shutdown(self):
+        if self.shutting_down:
+            return
+
+        self.shutting_down = True
+        self.unregister_hotkeys()
+
+        if self.control_hwnd:
+            user32.KillTimer(self.control_hwnd, TIMER_ID)
+
+        control_hwnd = self.control_hwnd
+        display_hwnd = self.display_hwnd
+
+        if control_hwnd:
+            user32.DestroyWindow(control_hwnd)
+        if display_hwnd and display_hwnd != control_hwnd:
+            user32.DestroyWindow(display_hwnd)
+
+    def handle_window_destroy(self, hwnd):
+        self.cleanup_window_resources(hwnd)
+        self.alive_windows -= 1
+        if self.alive_windows <= 0:
+            user32.PostQuitMessage(0)
+
     def wnd_proc(self, hwnd, msg, wparam, lparam):
-        if msg == WM_CREATE:
+        if msg == WM_CLOSE:
+            self.initiate_shutdown()
             return 0
 
         if msg == WM_SIZE:
-            if self.label_hwnd and self.toggle_hwnd and self.reset_hwnd:
-                self.update_layout()
+            if hwnd == self.control_hwnd and self.control_label_hwnd and self.toggle_hwnd and self.reset_hwnd:
+                self.update_control_layout()
+            elif hwnd == self.display_hwnd and self.display_label_hwnd:
+                self.update_display_layout()
             return 0
 
         if msg == WM_COMMAND:
-            self.handle_command(wparam)
+            if hwnd == self.control_hwnd:
+                self.handle_command(wparam)
             return 0
 
         if msg == WM_HOTKEY:
@@ -470,22 +677,17 @@ class TimerApp:
             elif wparam == HOTKEY_RESET:
                 self.reset_timer()
             elif wparam == HOTKEY_QUIT:
-                user32.DestroyWindow(hwnd)
+                self.initiate_shutdown()
             return 0
 
         if msg == WM_TIMER:
-            if wparam == TIMER_ID:
-                self.update_display()
-                self.set_always_on_top()
+            if hwnd == self.control_hwnd and wparam == TIMER_ID:
+                self.update_timer_labels()
+                self.enforce_always_on_top()
             return 0
 
         if msg == WM_DESTROY:
-            user32.KillTimer(hwnd, TIMER_ID)
-            self.unregister_hotkeys()
-            if self.hfont:
-                gdi32.DeleteObject(self.hfont)
-                self.hfont = None
-            user32.PostQuitMessage(0)
+            self.handle_window_destroy(hwnd)
             return 0
 
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
