@@ -45,3 +45,24 @@ uv run python always_on_top_timer.py
 - Timer state is managed in a shared controller/model and rendered in both windows.
 - Global hotkeys use `RegisterHotKey` and are unregistered on exit.
 - The timer uses `time.monotonic()` for stable elapsed-time tracking.
+
+## Portable EXE Build (No Installer)
+
+This project supports portable `.exe` output for Windows. No MSI/setup installer is created.
+
+Build both one-folder and one-file artifacts:
+
+```powershell
+uv sync
+./build-portable-exe.ps1 -Mode both -Clean
+```
+
+Output artifacts:
+
+- `dist/AlwaysOnTopTimer/AlwaysOnTopTimer.exe` (one-folder, faster startup)
+- `dist/AlwaysOnTopTimer-OneFile.exe` (single-file, easier to copy)
+
+Run behavior:
+
+- Copy the executable (or one-folder dist) to another Windows machine and run directly.
+- No installation step is required.
