@@ -1,6 +1,7 @@
 import ctypes
 import sys
 import time
+import winreg
 from ctypes import wintypes
 
 
@@ -53,6 +54,8 @@ WM_COMMAND = 0x0111
 WM_SETFONT = 0x0030
 WM_HOTKEY = 0x0312
 WM_TIMER = 0x0113
+WM_CTLCOLORBTN = 0x0135
+WM_CTLCOLORSTATIC = 0x0138
 
 MOD_CONTROL = 0x0002
 MOD_SHIFT = 0x0004
@@ -83,6 +86,16 @@ DISPLAY_DEFAULT_HEIGHT = 180
 
 DWMWA_WINDOW_CORNER_PREFERENCE = 33
 DWMWCP_ROUND = 2
+DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19
+
+COLOR_WINDOW = 5
+
+TRANSPARENT = 1
+
+LIGHT_TEXT_COLOR = 0x00E6E6E6
+DARK_BG_COLOR = 0x001E1E1E
+DARK_BUTTON_BG_COLOR = 0x002A2A2A
 
 
 class WNDCLASSEXW(ctypes.Structure):
@@ -247,6 +260,18 @@ def configure_winapi_signatures():
     gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
     gdi32.DeleteObject.restype = wintypes.BOOL
 
+    gdi32.CreateSolidBrush.argtypes = [wintypes.DWORD]
+    gdi32.CreateSolidBrush.restype = wintypes.HBRUSH
+
+    gdi32.SetTextColor.argtypes = [wintypes.HDC, wintypes.DWORD]
+    gdi32.SetTextColor.restype = wintypes.DWORD
+
+    gdi32.SetBkColor.argtypes = [wintypes.HDC, wintypes.DWORD]
+    gdi32.SetBkColor.restype = wintypes.DWORD
+
+    gdi32.SetBkMode.argtypes = [wintypes.HDC, ctypes.c_int]
+    gdi32.SetBkMode.restype = ctypes.c_int
+
     dwmapi.DwmSetWindowAttribute.argtypes = [
         wintypes.HWND,
         wintypes.DWORD,
@@ -254,6 +279,16 @@ def configure_winapi_signatures():
         wintypes.DWORD,
     ]
     dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
+
+
+def detect_windows_dark_mode():
+    key_path = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return int(value) == 0
+    except OSError:
+        return False
 
 
 class TimerModel:
@@ -309,6 +344,13 @@ class TimerApp:
         self.control_hfont = None
         self.display_hfont = None
 
+        self.use_dark_mode = detect_windows_dark_mode()
+        self.background_brush = None
+        self.button_background_brush = None
+        if self.use_dark_mode:
+            self.background_brush = gdi32.CreateSolidBrush(DARK_BG_COLOR)
+            self.button_background_brush = gdi32.CreateSolidBrush(DARK_BUTTON_BG_COLOR)
+
         self.model = TimerModel()
 
         self.hotkeys_registered = False
@@ -347,7 +389,10 @@ class TimerApp:
         wc.hInstance = self.hinstance
         wc.hIcon = user32.LoadIconW(None, ctypes.c_void_p(32512))
         wc.hCursor = user32.LoadCursorW(None, ctypes.c_void_p(32512))
-        wc.hbrBackground = ctypes.c_void_p(5 + 1)
+        if self.use_dark_mode and self.background_brush:
+            wc.hbrBackground = self.background_brush
+        else:
+            wc.hbrBackground = ctypes.c_void_p(COLOR_WINDOW + 1)
         wc.lpszMenuName = None
         wc.lpszClassName = self.class_name
         wc.hIconSm = wc.hIcon
@@ -406,6 +451,19 @@ class TimerApp:
             DWMWA_WINDOW_CORNER_PREFERENCE,
             ctypes.byref(corner_pref),
             ctypes.sizeof(corner_pref),
+        )
+        dark_mode = ctypes.c_int(1 if self.use_dark_mode else 0)
+        dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            ctypes.byref(dark_mode),
+            ctypes.sizeof(dark_mode),
+        )
+        dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE_OLD,
+            ctypes.byref(dark_mode),
+            ctypes.sizeof(dark_mode),
         )
 
     def create_timer_label(self, parent_hwnd):
@@ -661,6 +719,14 @@ class TimerApp:
             self.display_hwnd = None
             self.display_label_hwnd = None
 
+    def cleanup_theme_resources(self):
+        if self.background_brush:
+            gdi32.DeleteObject(self.background_brush)
+            self.background_brush = None
+        if self.button_background_brush:
+            gdi32.DeleteObject(self.button_background_brush)
+            self.button_background_brush = None
+
     def initiate_shutdown(self):
         if self.shutting_down:
             return
@@ -683,6 +749,7 @@ class TimerApp:
         self.cleanup_window_resources(hwnd)
         self.alive_windows -= 1
         if self.alive_windows <= 0:
+            self.cleanup_theme_resources()
             user32.PostQuitMessage(0)
 
     def wnd_proc(self, hwnd, msg, wparam, lparam):
@@ -703,6 +770,21 @@ class TimerApp:
             if hwnd == self.control_hwnd:
                 self.handle_command(wparam)
             return 0
+
+        if msg == WM_CTLCOLORSTATIC and self.use_dark_mode and self.background_brush:
+            hdc = wintypes.HDC(wparam)
+            gdi32.SetTextColor(hdc, LIGHT_TEXT_COLOR)
+            gdi32.SetBkMode(hdc, TRANSPARENT)
+            gdi32.SetBkColor(hdc, DARK_BG_COLOR)
+            return self.background_brush
+
+        if msg == WM_CTLCOLORBTN and self.use_dark_mode:
+            hdc = wintypes.HDC(wparam)
+            gdi32.SetTextColor(hdc, LIGHT_TEXT_COLOR)
+            gdi32.SetBkColor(hdc, DARK_BUTTON_BG_COLOR)
+            if self.button_background_brush:
+                return self.button_background_brush
+            return self.background_brush if self.background_brush else 0
 
         if msg == WM_HOTKEY:
             if wparam == HOTKEY_TOGGLE:
