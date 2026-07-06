@@ -11,6 +11,7 @@ if sys.platform != "win32":
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
 
 LRESULT = ctypes.c_ssize_t
 HCURSOR = wintypes.HANDLE
@@ -37,9 +38,11 @@ CS_VREDRAW = 0x0001
 WS_CHILD = 0x40000000
 WS_VISIBLE = 0x10000000
 WS_OVERLAPPEDWINDOW = 0x00CF0000
+WS_CLIPCHILDREN = 0x02000000
 
 BS_PUSHBUTTON = 0x00000000
 SS_CENTER = 0x00000001
+SS_CENTERIMAGE = 0x00000200
 
 SW_SHOW = 5
 
@@ -68,7 +71,7 @@ HOTKEY_RESET = 2
 HOTKEY_QUIT = 3
 
 TIMER_ID = 1
-TIMER_INTERVAL_MS = 100
+TIMER_INTERVAL_MS = 250
 
 BTN_TOGGLE_ID = 1001
 BTN_RESET_ID = 1002
@@ -77,6 +80,9 @@ CONTROL_DEFAULT_WIDTH = 520
 CONTROL_DEFAULT_HEIGHT = 260
 DISPLAY_DEFAULT_WIDTH = 520
 DISPLAY_DEFAULT_HEIGHT = 180
+
+DWMWA_WINDOW_CORNER_PREFERENCE = 33
+DWMWCP_ROUND = 2
 
 
 class WNDCLASSEXW(ctypes.Structure):
@@ -241,6 +247,14 @@ def configure_winapi_signatures():
     gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
     gdi32.DeleteObject.restype = wintypes.BOOL
 
+    dwmapi.DwmSetWindowAttribute.argtypes = [
+        wintypes.HWND,
+        wintypes.DWORD,
+        wintypes.LPCVOID,
+        wintypes.DWORD,
+    ]
+    dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
+
 
 class TimerModel:
     def __init__(self):
@@ -300,6 +314,7 @@ class TimerApp:
         self.hotkeys_registered = False
         self.shutting_down = False
         self.alive_windows = 0
+        self.last_rendered_time_text = ""
 
         self._wndproc_ref = WNDPROC(self.wnd_proc)
 
@@ -347,7 +362,7 @@ class TimerApp:
             0,
             self.class_name,
             self.control_title,
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             CONTROL_DEFAULT_WIDTH,
@@ -365,7 +380,7 @@ class TimerApp:
             0,
             self.class_name,
             self.display_title,
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             DISPLAY_DEFAULT_WIDTH,
@@ -379,14 +394,26 @@ class TimerApp:
             err = ctypes.get_last_error()
             raise OSError(err, "CreateWindowExW failed for display window")
 
+        self.apply_windows11_window_style(self.control_hwnd)
+        self.apply_windows11_window_style(self.display_hwnd)
+
         self.alive_windows = 2
+
+    def apply_windows11_window_style(self, hwnd):
+        corner_pref = ctypes.c_int(DWMWCP_ROUND)
+        dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            ctypes.byref(corner_pref),
+            ctypes.sizeof(corner_pref),
+        )
 
     def create_timer_label(self, parent_hwnd):
         label_hwnd = user32.CreateWindowExW(
             0,
             "STATIC",
             "00:00:00",
-            WS_CHILD | WS_VISIBLE | SS_CENTER,
+            WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
             0,
             0,
             100,
@@ -483,6 +510,10 @@ class TimerApp:
 
     def update_timer_labels(self):
         text = self.model.formatted_time()
+        if text == self.last_rendered_time_text:
+            return
+
+        self.last_rendered_time_text = text
         if self.control_label_hwnd:
             user32.SetWindowTextW(self.control_label_hwnd, text)
         if self.display_label_hwnd:
@@ -592,7 +623,7 @@ class TimerApp:
             0,
             0,
             0,
-            "Segoe UI",
+            "Segoe UI" if is_control_window else "Segoe UI Variable Display",
         )
 
         if new_font:
@@ -662,8 +693,10 @@ class TimerApp:
         if msg == WM_SIZE:
             if hwnd == self.control_hwnd and self.control_label_hwnd and self.toggle_hwnd and self.reset_hwnd:
                 self.update_control_layout()
+                self.set_window_always_on_top(self.control_hwnd)
             elif hwnd == self.display_hwnd and self.display_label_hwnd:
                 self.update_display_layout()
+                self.set_window_always_on_top(self.display_hwnd)
             return 0
 
         if msg == WM_COMMAND:
@@ -683,7 +716,6 @@ class TimerApp:
         if msg == WM_TIMER:
             if hwnd == self.control_hwnd and wparam == TIMER_ID:
                 self.update_timer_labels()
-                self.enforce_always_on_top()
             return 0
 
         if msg == WM_DESTROY:
