@@ -22,7 +22,7 @@ if ($Mode -eq 'onedir' -or $Mode -eq 'both') {
 }
 
 if ($Mode -eq 'onefile' -or $Mode -eq 'both') {
-    Run-Command "uv run pyinstaller --noconfirm --clean --windowed --name AlwaysOnTopTimer-OneFile --onefile always_on_top_timer.py"
+    Run-Command "uv run pyinstaller --noconfirm --clean --windowed --name AlwaysOnTopTimer --onefile always_on_top_timer.py"
 }
 
 Write-Host "Portable build complete." -ForegroundColor Green
@@ -30,7 +30,7 @@ Write-Host "Outputs:" -ForegroundColor Green
 if (Test-Path "dist\\AlwaysOnTopTimer") {
     Write-Host "- dist\\AlwaysOnTopTimer\\AlwaysOnTopTimer.exe (one-folder)"
 }
-if (Test-Path "dist\\AlwaysOnTopTimer-OneFile.exe") {
-    Write-Host "- dist\\AlwaysOnTopTimer-OneFile.exe (one-file)"
+if (Test-Path "dist\\AlwaysOnTopTimer.exe") {
+    Write-Host "- dist\\AlwaysOnTopTimer.exe (one-file)"
 }
 Write-Host "No installer is created. These are portable run-in-place artifacts." -ForegroundColor Yellow

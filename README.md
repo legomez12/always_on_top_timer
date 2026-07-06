@@ -60,7 +60,7 @@ uv sync
 Output artifacts:
 
 - `dist/AlwaysOnTopTimer/AlwaysOnTopTimer.exe` (one-folder, faster startup)
-- `dist/AlwaysOnTopTimer-OneFile.exe` (single-file, easier to copy)
+- `dist/AlwaysOnTopTimer.exe` (single-file, easier to copy)
 
 Run behavior:
 
