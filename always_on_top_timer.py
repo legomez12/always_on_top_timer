@@ -1,329 +1,67 @@
 import ctypes
 import sys
-import time
-import winreg
 from ctypes import wintypes
+
+from timer_constants import (
+    BS_PUSHBUTTON,
+    BTN_RESET_ID,
+    BTN_TOGGLE_ID,
+    COLOR_WINDOW,
+    CONTROL_DEFAULT_HEIGHT,
+    CONTROL_DEFAULT_WIDTH,
+    CS_HREDRAW,
+    CS_VREDRAW,
+    CW_USEDEFAULT,
+    DISPLAY_DEFAULT_HEIGHT,
+    DISPLAY_DEFAULT_WIDTH,
+    HOTKEY_QUIT,
+    HOTKEY_RESET,
+    HOTKEY_TOGGLE,
+    HWND_TOPMOST,
+    LIGHT_TEXT_COLOR,
+    MOD_CONTROL,
+    MOD_SHIFT,
+    SS_CENTER,
+    SS_CENTERIMAGE,
+    SW_SHOW,
+    SWP_NOACTIVATE,
+    SWP_NOMOVE,
+    SWP_NOSIZE,
+    TIMER_ID,
+    TIMER_INTERVAL_MS,
+    TRANSPARENT,
+    VK_Q,
+    VK_R,
+    VK_S,
+    WM_CLOSE,
+    WM_COMMAND,
+    WM_CTLCOLORBTN,
+    WM_CTLCOLORSTATIC,
+    WM_DESTROY,
+    WM_HOTKEY,
+    WM_SETFONT,
+    WM_SIZE,
+    WM_TIMER,
+    WS_CHILD,
+    WS_CLIPCHILDREN,
+    WS_OVERLAPPEDWINDOW,
+    WS_VISIBLE,
+)
+from timer_model import TimerModel
+from win32_api import (
+    apply_windows11_window_style,
+    configure_winapi_signatures,
+    create_dark_brushes,
+    detect_windows_dark_mode,
+    gdi32,
+    kernel32,
+    user32,
+)
+from win32_types import RECT, WNDCLASSEXW, WNDPROC
 
 
 if sys.platform != "win32":
     raise SystemExit("This app is Windows-only and uses the Win32 API.")
-
-
-user32 = ctypes.WinDLL("user32", use_last_error=True)
-gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
-kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
-
-LRESULT = ctypes.c_ssize_t
-HCURSOR = wintypes.HANDLE
-WNDPROC = ctypes.WINFUNCTYPE(
-    LRESULT,
-    wintypes.HWND,
-    wintypes.UINT,
-    wintypes.WPARAM,
-    wintypes.LPARAM,
-)
-
-UINT_PTR = getattr(
-    wintypes,
-    "UINT_PTR",
-    ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else wintypes.UINT,
-)
-
-
-CW_USEDEFAULT = -2147483648
-
-CS_HREDRAW = 0x0002
-CS_VREDRAW = 0x0001
-
-WS_CHILD = 0x40000000
-WS_VISIBLE = 0x10000000
-WS_OVERLAPPEDWINDOW = 0x00CF0000
-WS_CLIPCHILDREN = 0x02000000
-
-BS_PUSHBUTTON = 0x00000000
-SS_CENTER = 0x00000001
-SS_CENTERIMAGE = 0x00000200
-
-SW_SHOW = 5
-
-WM_CLOSE = 0x0010
-WM_DESTROY = 0x0002
-WM_SIZE = 0x0005
-WM_COMMAND = 0x0111
-WM_SETFONT = 0x0030
-WM_HOTKEY = 0x0312
-WM_TIMER = 0x0113
-WM_CTLCOLORBTN = 0x0135
-WM_CTLCOLORSTATIC = 0x0138
-
-MOD_CONTROL = 0x0002
-MOD_SHIFT = 0x0004
-
-VK_S = 0x53
-VK_R = 0x52
-VK_Q = 0x51
-
-SWP_NOSIZE = 0x0001
-SWP_NOMOVE = 0x0002
-SWP_NOACTIVATE = 0x0010
-HWND_TOPMOST = -1
-
-HOTKEY_TOGGLE = 1
-HOTKEY_RESET = 2
-HOTKEY_QUIT = 3
-
-TIMER_ID = 1
-TIMER_INTERVAL_MS = 250
-
-BTN_TOGGLE_ID = 1001
-BTN_RESET_ID = 1002
-
-CONTROL_DEFAULT_WIDTH = 520
-CONTROL_DEFAULT_HEIGHT = 260
-DISPLAY_DEFAULT_WIDTH = 520
-DISPLAY_DEFAULT_HEIGHT = 180
-
-DWMWA_WINDOW_CORNER_PREFERENCE = 33
-DWMWCP_ROUND = 2
-DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19
-
-COLOR_WINDOW = 5
-
-TRANSPARENT = 1
-
-LIGHT_TEXT_COLOR = 0x00E6E6E6
-DARK_BG_COLOR = 0x001E1E1E
-DARK_BUTTON_BG_COLOR = 0x002A2A2A
-
-
-class WNDCLASSEXW(ctypes.Structure):
-    _fields_ = [
-        ("cbSize", wintypes.UINT),
-        ("style", wintypes.UINT),
-        ("lpfnWndProc", WNDPROC),
-        ("cbClsExtra", ctypes.c_int),
-        ("cbWndExtra", ctypes.c_int),
-        ("hInstance", wintypes.HINSTANCE),
-        ("hIcon", wintypes.HICON),
-        ("hCursor", HCURSOR),
-        ("hbrBackground", wintypes.HBRUSH),
-        ("lpszMenuName", wintypes.LPCWSTR),
-        ("lpszClassName", wintypes.LPCWSTR),
-        ("hIconSm", wintypes.HICON),
-    ]
-
-
-class RECT(ctypes.Structure):
-    _fields_ = [
-        ("left", ctypes.c_long),
-        ("top", ctypes.c_long),
-        ("right", ctypes.c_long),
-        ("bottom", ctypes.c_long),
-    ]
-
-
-def configure_winapi_signatures():
-    # Explicit signatures avoid 64-bit truncation/overflow in message params.
-    user32.DefWindowProcW.argtypes = [
-        wintypes.HWND,
-        wintypes.UINT,
-        wintypes.WPARAM,
-        wintypes.LPARAM,
-    ]
-    user32.DefWindowProcW.restype = LRESULT
-
-    user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
-    user32.DispatchMessageW.restype = LRESULT
-
-    user32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
-    user32.TranslateMessage.restype = wintypes.BOOL
-
-    user32.GetMessageW.argtypes = [
-        ctypes.POINTER(wintypes.MSG),
-        wintypes.HWND,
-        wintypes.UINT,
-        wintypes.UINT,
-    ]
-    user32.GetMessageW.restype = wintypes.BOOL
-
-    user32.RegisterClassExW.argtypes = [ctypes.POINTER(WNDCLASSEXW)]
-    user32.RegisterClassExW.restype = wintypes.ATOM
-
-    user32.CreateWindowExW.argtypes = [
-        wintypes.DWORD,
-        wintypes.LPCWSTR,
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        wintypes.HWND,
-        wintypes.HMENU,
-        wintypes.HINSTANCE,
-        wintypes.LPVOID,
-    ]
-    user32.CreateWindowExW.restype = wintypes.HWND
-
-    user32.SetWindowPos.argtypes = [
-        wintypes.HWND,
-        wintypes.HWND,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        wintypes.UINT,
-    ]
-    user32.SetWindowPos.restype = wintypes.BOOL
-
-    user32.SendMessageW.argtypes = [
-        wintypes.HWND,
-        wintypes.UINT,
-        wintypes.WPARAM,
-        wintypes.LPARAM,
-    ]
-    user32.SendMessageW.restype = LRESULT
-
-    user32.SetTimer.argtypes = [
-        wintypes.HWND,
-        UINT_PTR,
-        wintypes.UINT,
-        wintypes.LPVOID,
-    ]
-    user32.SetTimer.restype = UINT_PTR
-
-    user32.KillTimer.argtypes = [wintypes.HWND, UINT_PTR]
-    user32.KillTimer.restype = wintypes.BOOL
-
-    user32.RegisterHotKey.argtypes = [
-        wintypes.HWND,
-        ctypes.c_int,
-        wintypes.UINT,
-        wintypes.UINT,
-    ]
-    user32.RegisterHotKey.restype = wintypes.BOOL
-
-    user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
-    user32.UnregisterHotKey.restype = wintypes.BOOL
-
-    gdi32.GetDeviceCaps.argtypes = [wintypes.HDC, ctypes.c_int]
-    gdi32.GetDeviceCaps.restype = ctypes.c_int
-
-    user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT)]
-    user32.GetClientRect.restype = wintypes.BOOL
-
-    user32.MoveWindow.argtypes = [
-        wintypes.HWND,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        wintypes.BOOL,
-    ]
-    user32.MoveWindow.restype = wintypes.BOOL
-
-    user32.SetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
-    user32.SetWindowTextW.restype = wintypes.BOOL
-
-    user32.DestroyWindow.argtypes = [wintypes.HWND]
-    user32.DestroyWindow.restype = wintypes.BOOL
-
-    user32.PostQuitMessage.argtypes = [ctypes.c_int]
-    user32.PostQuitMessage.restype = None
-
-    user32.GetDC.argtypes = [wintypes.HWND]
-    user32.GetDC.restype = wintypes.HDC
-
-    user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
-    user32.ReleaseDC.restype = ctypes.c_int
-
-    gdi32.CreateFontW.argtypes = [
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.LPCWSTR,
-    ]
-    gdi32.CreateFontW.restype = wintypes.HFONT
-
-    gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
-    gdi32.DeleteObject.restype = wintypes.BOOL
-
-    gdi32.CreateSolidBrush.argtypes = [wintypes.DWORD]
-    gdi32.CreateSolidBrush.restype = wintypes.HBRUSH
-
-    gdi32.SetTextColor.argtypes = [wintypes.HDC, wintypes.DWORD]
-    gdi32.SetTextColor.restype = wintypes.DWORD
-
-    gdi32.SetBkColor.argtypes = [wintypes.HDC, wintypes.DWORD]
-    gdi32.SetBkColor.restype = wintypes.DWORD
-
-    gdi32.SetBkMode.argtypes = [wintypes.HDC, ctypes.c_int]
-    gdi32.SetBkMode.restype = ctypes.c_int
-
-    dwmapi.DwmSetWindowAttribute.argtypes = [
-        wintypes.HWND,
-        wintypes.DWORD,
-        wintypes.LPCVOID,
-        wintypes.DWORD,
-    ]
-    dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
-
-
-def detect_windows_dark_mode():
-    key_path = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-            return int(value) == 0
-    except OSError:
-        return False
-
-
-class TimerModel:
-    def __init__(self):
-        self.elapsed_seconds = 0.0
-        self.running = False
-        self.last_start_monotonic = None
-
-    def toggle(self):
-        if self.running:
-            if self.last_start_monotonic is not None:
-                self.elapsed_seconds += time.monotonic() - self.last_start_monotonic
-            self.running = False
-            self.last_start_monotonic = None
-        else:
-            self.running = True
-            self.last_start_monotonic = time.monotonic()
-
-    def reset(self):
-        self.elapsed_seconds = 0.0
-        if self.running:
-            self.last_start_monotonic = time.monotonic()
-
-    def total_seconds(self):
-        total = self.elapsed_seconds
-        if self.running and self.last_start_monotonic is not None:
-            total += time.monotonic() - self.last_start_monotonic
-        return int(total)
-
-    def formatted_time(self):
-        total_seconds = self.total_seconds()
-        hours = total_seconds // 3600
-        minutes = (total_seconds % 3600) // 60
-        seconds = total_seconds % 60
-        return f"{hours:02}:{minutes:02}:{seconds:02}"
 
 
 class TimerApp:
@@ -348,8 +86,7 @@ class TimerApp:
         self.background_brush = None
         self.button_background_brush = None
         if self.use_dark_mode:
-            self.background_brush = gdi32.CreateSolidBrush(DARK_BG_COLOR)
-            self.button_background_brush = gdi32.CreateSolidBrush(DARK_BUTTON_BG_COLOR)
+            self.background_brush, self.button_background_brush = create_dark_brushes()
 
         self.model = TimerModel()
 
@@ -439,32 +176,10 @@ class TimerApp:
             err = ctypes.get_last_error()
             raise OSError(err, "CreateWindowExW failed for display window")
 
-        self.apply_windows11_window_style(self.control_hwnd)
-        self.apply_windows11_window_style(self.display_hwnd)
+        apply_windows11_window_style(self.control_hwnd, self.use_dark_mode)
+        apply_windows11_window_style(self.display_hwnd, self.use_dark_mode)
 
         self.alive_windows = 2
-
-    def apply_windows11_window_style(self, hwnd):
-        corner_pref = ctypes.c_int(DWMWCP_ROUND)
-        dwmapi.DwmSetWindowAttribute(
-            hwnd,
-            DWMWA_WINDOW_CORNER_PREFERENCE,
-            ctypes.byref(corner_pref),
-            ctypes.sizeof(corner_pref),
-        )
-        dark_mode = ctypes.c_int(1 if self.use_dark_mode else 0)
-        dwmapi.DwmSetWindowAttribute(
-            hwnd,
-            DWMWA_USE_IMMERSIVE_DARK_MODE,
-            ctypes.byref(dark_mode),
-            ctypes.sizeof(dark_mode),
-        )
-        dwmapi.DwmSetWindowAttribute(
-            hwnd,
-            DWMWA_USE_IMMERSIVE_DARK_MODE_OLD,
-            ctypes.byref(dark_mode),
-            ctypes.sizeof(dark_mode),
-        )
 
     def create_timer_label(self, parent_hwnd):
         label_hwnd = user32.CreateWindowExW(
