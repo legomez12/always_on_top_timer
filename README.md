@@ -86,5 +86,4 @@ Optional verification:
 
 3. Confirm the hash matches the checksum file entry.
 
-MVP Version: `v1.0.0` (2026-07-06)
 One file build: `v1.0.1` (2026-07-06)
