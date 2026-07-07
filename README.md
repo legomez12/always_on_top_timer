@@ -80,8 +80,10 @@ Optional verification:
 1. Download `AlwaysOnTopTimer-vX.Y.Z-sha256.txt`.
 2. Run a local hash check (PowerShell):
 
-```powershell
-Get-FileHash .\AlwaysOnTopTimer-vX.Y.Z-onedir.zip -Algorithm SHA256
-```
+    ```powershell
+    Get-FileHash .\AlwaysOnTopTimer-vX.Y.Z-onedir.zip -Algorithm SHA256
+    ```
 
 3. Confirm the hash matches the checksum file entry.
+
+MVP Version: `v1.0.0` (2026-07-06)
