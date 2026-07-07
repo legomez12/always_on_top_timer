@@ -30,16 +30,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Build one-folder release executable
+      - name: Build one-file release executable
         shell: pwsh
-        run: ./build-portable-exe.ps1 -Mode onedir -Clean
+        run: ./build-portable-exe.ps1 -Mode onefile -Clean
 
       - name: Package versioned assets
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          $zipName = "AlwaysOnTopTimer-$env:VERSION-onedir.zip"
-          Compress-Archive -Path "dist/AlwaysOnTopTimer/*" -DestinationPath "release-assets/$zipName" -Force
+          $exeName = "AlwaysOnTopTimer-$env:VERSION-onefile.exe"
+          Copy-Item "dist/AlwaysOnTopTimer.exe" "release-assets/$exeName" -Force
 
       - name: Generate SHA256 checksums
         shell: pwsh
@@ -55,5 +55,5 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: |
-            release-assets/*.zip
+            release-assets/*.exe
             release-assets/*-sha256.txt

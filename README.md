@@ -73,7 +73,7 @@ Download the latest prebuilt Windows executable package from GitHub Releases.
 
 Recommended asset:
 
-- `AlwaysOnTopTimer-vX.Y.Z-onedir.zip`
+- `AlwaysOnTopTimer-vX.Y.Z-onefile.exe`
 
 Optional verification:
 
@@ -81,9 +81,10 @@ Optional verification:
 2. Run a local hash check (PowerShell):
 
     ```powershell
-    Get-FileHash .\AlwaysOnTopTimer-vX.Y.Z-onedir.zip -Algorithm SHA256
+    Get-FileHash .\AlwaysOnTopTimer-vX.Y.Z-onefile.exe -Algorithm SHA256
     ```
 
 3. Confirm the hash matches the checksum file entry.
 
 MVP Version: `v1.0.0` (2026-07-06)
+One file build: `v1.0.1` (2026-07-06)
