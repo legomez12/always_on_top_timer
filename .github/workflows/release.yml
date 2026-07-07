@@ -1,0 +1,59 @@
+name: Release Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Build one-folder release executable
+        shell: pwsh
+        run: ./build-portable-exe.ps1 -Mode onedir -Clean
+
+      - name: Package versioned assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          $zipName = "AlwaysOnTopTimer-$env:VERSION-onedir.zip"
+          Compress-Archive -Path "dist/AlwaysOnTopTimer/*" -DestinationPath "release-assets/$zipName" -Force
+
+      - name: Generate SHA256 checksums
+        shell: pwsh
+        run: |
+          $checksumFile = "release-assets/AlwaysOnTopTimer-$env:VERSION-sha256.txt"
+          Get-ChildItem release-assets -File | ForEach-Object {
+            $hash = Get-FileHash $_.FullName -Algorithm SHA256
+            "$($hash.Hash)  $($_.Name)" | Out-File -FilePath $checksumFile -Append -Encoding ascii
+          }
+
+      - name: Create or update GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            release-assets/*.zip
+            release-assets/*-sha256.txt

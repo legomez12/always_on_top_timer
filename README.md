@@ -66,3 +66,22 @@ Run behavior:
 
 - Copy the executable (or one-folder dist) to another Windows machine and run directly.
 - No installation step is required.
+
+## Download From Releases
+
+Download the latest prebuilt Windows executable package from GitHub Releases.
+
+Recommended asset:
+
+- `AlwaysOnTopTimer-vX.Y.Z-onedir.zip`
+
+Optional verification:
+
+1. Download `AlwaysOnTopTimer-vX.Y.Z-sha256.txt`.
+2. Run a local hash check (PowerShell):
+
+```powershell
+Get-FileHash .\AlwaysOnTopTimer-vX.Y.Z-onedir.zip -Algorithm SHA256
+```
+
+3. Confirm the hash matches the checksum file entry.

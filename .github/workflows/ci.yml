@@ -1,0 +1,44 @@
+name: CI Build Validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci-build-validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run mypy
+        run: uv run mypy .
+
+      - name: Compile smoke check
+        run: uv run python -m compileall .
+
+      - name: Build portable executable
+        shell: pwsh
+        run: ./build-portable-exe.ps1 -Mode onedir -Clean
+
+      - name: Upload one-folder build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AlwaysOnTopTimer-onedir-ci
+          path: dist/AlwaysOnTopTimer/**
+          if-no-files-found: error
