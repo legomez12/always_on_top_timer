@@ -471,10 +471,8 @@ class TimerApp:
         if msg == WM_SIZE:
             if hwnd == self.control_hwnd and self.control_label_hwnd and self.toggle_hwnd and self.reset_hwnd:
                 self.update_control_layout()
-                self.set_window_always_on_top(self.control_hwnd)
             elif hwnd == self.display_hwnd and self.display_label_hwnd:
                 self.update_display_layout()
-                self.set_window_always_on_top(self.display_hwnd)
             return 0
 
         if msg == WM_COMMAND:
