@@ -33,6 +33,7 @@ from timer_constants import (
     SWP_NOACTIVATE,
     SWP_NOMOVE,
     SWP_NOSIZE,
+    SECOND_ROW_CONTROL_SCALE,
     TIMER_ID,
     TIMER_INTERVAL_MS,
     TRANSPARENT,
@@ -469,7 +470,7 @@ class TimerApp:
 
         padding = 12
         button_height = 34
-        second_row_button_height = max(24, int(button_height * 0.8))
+        second_row_button_height = max(20, int(button_height * SECOND_ROW_CONTROL_SCALE))
         button_spacing = 12
         label_height = max(70, height - (button_height + second_row_button_height + button_spacing + (padding * 3)))
 
@@ -561,9 +562,9 @@ class TimerApp:
         dpi = gdi32.GetDeviceCaps(hdc, 90)
         user32.ReleaseDC(window_hwnd, hdc)
 
-        # Top row uses 100% default size, second row uses 80% for compact layout.
+        # Top row uses 100% default size, second row uses shared scale for consistency.
         top_height_px = -int(9 * dpi / 72)
-        bottom_height_px = -int((9 * 0.8) * dpi / 72)
+        bottom_height_px = -int((9 * SECOND_ROW_CONTROL_SCALE) * dpi / 72)
 
         new_top_font = gdi32.CreateFontW(
             top_height_px,

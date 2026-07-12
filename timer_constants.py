@@ -29,6 +29,9 @@ HOTKEY_QUIT = 3
 TIMER_ID = 1
 TIMER_INTERVAL_MS = 1000
 
+# Shared scale used by second-row control button height and font sizing.
+SECOND_ROW_CONTROL_SCALE = 0.6
+
 BTN_TOGGLE_ID = 1001
 BTN_RESET_ID = 1002
 BTN_THEME_ID = 1003
