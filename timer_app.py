@@ -3,8 +3,10 @@ from ctypes import wintypes
 
 from timer_constants import (
     BS_PUSHBUTTON,
+    BTN_DISPLAY_ID,
     BTN_RESET_ID,
     BTN_THEME_ID,
+    BTN_TOPMOST_ID,
     BTN_TOGGLE_ID,
     COLOR_WINDOW,
     CONTROL_DEFAULT_HEIGHT,
@@ -19,12 +21,14 @@ from timer_constants import (
     HOTKEY_QUIT,
     HOTKEY_RESET,
     HOTKEY_TOGGLE,
+    HWND_NOTOPMOST,
     HWND_TOPMOST,
     LIGHT_TEXT_COLOR,
     MOD_CONTROL,
     MOD_SHIFT,
     SS_CENTER,
     SS_CENTERIMAGE,
+    SW_HIDE,
     SW_SHOW,
     SWP_NOACTIVATE,
     SWP_NOMOVE,
@@ -77,6 +81,8 @@ class TimerApp:
         self.toggle_hwnd = None
         self.reset_hwnd = None
         self.theme_hwnd = None
+        self.topmost_hwnd = None
+        self.display_toggle_hwnd = None
 
         self.control_hfont = None
         self.display_hfont = None
@@ -93,6 +99,8 @@ class TimerApp:
         self.shutting_down = False
         self.alive_windows = 0
         self.last_rendered_time_text = ""
+        self.always_on_top_enabled = True
+        self.display_visible = True
 
         self._wndproc_ref = WNDPROC(self.wnd_proc)
 
@@ -255,11 +263,49 @@ class TimerApp:
             err = ctypes.get_last_error()
             raise OSError(err, "CreateWindowExW failed for Theme button")
 
+        self.topmost_hwnd = user32.CreateWindowExW(
+            0,
+            "BUTTON",
+            "Always On Top: On",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            0,
+            0,
+            100,
+            32,
+            self.control_hwnd,
+            ctypes.c_void_p(BTN_TOPMOST_ID),
+            self.hinstance,
+            None,
+        )
+        if not self.topmost_hwnd:
+            err = ctypes.get_last_error()
+            raise OSError(err, "CreateWindowExW failed for Always-On-Top button")
+
+        self.display_toggle_hwnd = user32.CreateWindowExW(
+            0,
+            "BUTTON",
+            "Display: Hide",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            0,
+            0,
+            100,
+            32,
+            self.control_hwnd,
+            ctypes.c_void_p(BTN_DISPLAY_ID),
+            self.hinstance,
+            None,
+        )
+        if not self.display_toggle_hwnd:
+            err = ctypes.get_last_error()
+            raise OSError(err, "CreateWindowExW failed for Display toggle button")
+
         self.update_control_layout()
         self.update_display_layout()
         self.update_timer_labels()
         self.update_toggle_button()
         self.update_theme_button()
+        self.update_always_on_top_button()
+        self.update_display_toggle_button()
 
     def register_hotkeys(self):
         user32.RegisterHotKey(self.control_hwnd, HOTKEY_TOGGLE, MOD_CONTROL | MOD_SHIFT, VK_S)
@@ -286,11 +332,28 @@ class TimerApp:
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
         )
 
+    def clear_window_always_on_top(self, hwnd):
+        user32.SetWindowPos(
+            hwnd,
+            HWND_NOTOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+
     def enforce_always_on_top(self):
         if self.control_hwnd:
-            self.set_window_always_on_top(self.control_hwnd)
+            if self.always_on_top_enabled:
+                self.set_window_always_on_top(self.control_hwnd)
+            else:
+                self.clear_window_always_on_top(self.control_hwnd)
         if self.display_hwnd:
-            self.set_window_always_on_top(self.display_hwnd)
+            if self.always_on_top_enabled:
+                self.set_window_always_on_top(self.display_hwnd)
+            else:
+                self.clear_window_always_on_top(self.display_hwnd)
 
     def update_toggle_button(self):
         if self.toggle_hwnd:
@@ -302,6 +365,39 @@ class TimerApp:
     def update_theme_button(self):
         if self.theme_hwnd:
             user32.SetWindowTextW(self.theme_hwnd, "Theme: Dark" if self.use_dark_mode else "Theme: Light")
+
+    def update_always_on_top_button(self):
+        if self.topmost_hwnd:
+            user32.SetWindowTextW(
+                self.topmost_hwnd,
+                "Always On Top: On" if self.always_on_top_enabled else "Always On Top: Off",
+            )
+
+    def update_display_toggle_button(self):
+        if self.display_toggle_hwnd:
+            user32.SetWindowTextW(
+                self.display_toggle_hwnd,
+                "Display: Hide" if self.display_visible else "Display: Show",
+            )
+
+    def toggle_always_on_top(self):
+        self.always_on_top_enabled = not self.always_on_top_enabled
+        self.enforce_always_on_top()
+        self.update_always_on_top_button()
+
+    def toggle_display_window_visibility(self):
+        if not self.display_hwnd:
+            return
+
+        self.display_visible = not self.display_visible
+        user32.ShowWindow(self.display_hwnd, SW_SHOW if self.display_visible else SW_HIDE)
+
+        if self.display_visible:
+            user32.UpdateWindow(self.display_hwnd)
+            if self.always_on_top_enabled:
+                self.set_window_always_on_top(self.display_hwnd)
+
+        self.update_display_toggle_button()
 
     def refresh_theme_brushes(self):
         self.cleanup_theme_resources()
@@ -331,6 +427,8 @@ class TimerApp:
         self.request_repaint(self.toggle_hwnd)
         self.request_repaint(self.reset_hwnd)
         self.request_repaint(self.theme_hwnd)
+        self.request_repaint(self.topmost_hwnd)
+        self.request_repaint(self.display_toggle_hwnd)
 
     def update_timer_labels(self):
         text = self.model.formatted_time()
@@ -365,7 +463,7 @@ class TimerApp:
         padding = 12
         button_height = 34
         button_spacing = 12
-        label_height = max(70, height - button_height - (padding * 3))
+        label_height = max(70, height - ((button_height * 2) + button_spacing + (padding * 3)))
 
         button_width = (width - (padding * 2) - (button_spacing * 2)) // 3
 
@@ -393,6 +491,24 @@ class TimerApp:
             padding + (button_width * 2) + (button_spacing * 2),
             button_y,
             button_width,
+            button_height,
+            True,
+        )
+        second_row_y = button_y + button_height + button_spacing
+        two_button_width = (width - (padding * 2) - button_spacing) // 2
+        user32.MoveWindow(
+            self.topmost_hwnd,
+            padding,
+            second_row_y,
+            two_button_width,
+            button_height,
+            True,
+        )
+        user32.MoveWindow(
+            self.display_toggle_hwnd,
+            padding + two_button_width + button_spacing,
+            second_row_y,
+            two_button_width,
             button_height,
             True,
         )
@@ -478,6 +594,10 @@ class TimerApp:
             self.reset_timer()
         elif command_id == BTN_THEME_ID:
             self.toggle_theme()
+        elif command_id == BTN_TOPMOST_ID:
+            self.toggle_always_on_top()
+        elif command_id == BTN_DISPLAY_ID:
+            self.toggle_display_window_visibility()
 
     def cleanup_window_resources(self, hwnd):
         if hwnd == self.control_hwnd:
@@ -489,12 +609,15 @@ class TimerApp:
             self.toggle_hwnd = None
             self.reset_hwnd = None
             self.theme_hwnd = None
+            self.topmost_hwnd = None
+            self.display_toggle_hwnd = None
         elif hwnd == self.display_hwnd:
             if self.display_hfont:
                 gdi32.DeleteObject(self.display_hfont)
                 self.display_hfont = None
             self.display_hwnd = None
             self.display_label_hwnd = None
+            self.display_visible = False
 
     def cleanup_theme_resources(self):
         if self.background_brush:
@@ -547,6 +670,8 @@ class TimerApp:
                 and self.toggle_hwnd
                 and self.reset_hwnd
                 and self.theme_hwnd
+                and self.topmost_hwnd
+                and self.display_toggle_hwnd
             ):
                 self.update_control_layout()
             elif hwnd == self.display_hwnd and self.display_label_hwnd:
