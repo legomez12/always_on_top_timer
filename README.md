@@ -95,3 +95,7 @@ One file build: `v1.0.1` (2026-07-06)
 - `v1.2.0`: Added a Dark/Light theme toggle with live UI repainting.
 - `v1.3.0`: Added Always On Top and Display visibility toggle controls.
 - `v1.3.1`: Replaced prior experimental layout changes with a corrected two-row button layout; second-row size/font are tuned to 70% via variables.
+
+Note:
+
+- `v1.3.1` is the current active release with the corrected two-row layout.
