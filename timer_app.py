@@ -560,9 +560,9 @@ class TimerApp:
         dpi = gdi32.GetDeviceCaps(hdc, 90)
         user32.ReleaseDC(window_hwnd, hdc)
 
-        # Top row uses 100% default size, second row uses 60% for compact layout.
+        # Top row uses 100% default size, second row uses 80% for compact layout.
         top_height_px = -int(9 * dpi / 72)
-        bottom_height_px = -int((9 * 0.6) * dpi / 72)
+        bottom_height_px = -int((9 * 0.8) * dpi / 72)
 
         new_top_font = gdi32.CreateFontW(
             top_height_px,
