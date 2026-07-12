@@ -4,6 +4,7 @@ from ctypes import wintypes
 from timer_constants import (
     BS_PUSHBUTTON,
     BTN_RESET_ID,
+    BTN_THEME_ID,
     BTN_TOGGLE_ID,
     COLOR_WINDOW,
     CONTROL_DEFAULT_HEIGHT,
@@ -39,6 +40,7 @@ from timer_constants import (
     WM_CTLCOLORBTN,
     WM_CTLCOLORSTATIC,
     WM_DESTROY,
+    WM_ERASEBKGND,
     WM_HOTKEY,
     WM_SETFONT,
     WM_SIZE,
@@ -74,6 +76,7 @@ class TimerApp:
         self.display_label_hwnd = None
         self.toggle_hwnd = None
         self.reset_hwnd = None
+        self.theme_hwnd = None
 
         self.control_hfont = None
         self.display_hfont = None
@@ -122,10 +125,7 @@ class TimerApp:
         wc.hInstance = self.hinstance
         wc.hIcon = user32.LoadIconW(None, ctypes.c_void_p(32512))
         wc.hCursor = user32.LoadCursorW(None, ctypes.c_void_p(32512))
-        if self.use_dark_mode and self.background_brush:
-            wc.hbrBackground = self.background_brush
-        else:
-            wc.hbrBackground = ctypes.c_void_p(COLOR_WINDOW + 1)
+        wc.hbrBackground = ctypes.c_void_p(COLOR_WINDOW + 1)
         wc.lpszMenuName = None
         wc.lpszClassName = self.class_name
         wc.hIconSm = wc.hIcon
@@ -237,10 +237,29 @@ class TimerApp:
             err = ctypes.get_last_error()
             raise OSError(err, "CreateWindowExW failed for Reset button")
 
+        self.theme_hwnd = user32.CreateWindowExW(
+            0,
+            "BUTTON",
+            "Theme: Dark",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            0,
+            0,
+            100,
+            32,
+            self.control_hwnd,
+            ctypes.c_void_p(BTN_THEME_ID),
+            self.hinstance,
+            None,
+        )
+        if not self.theme_hwnd:
+            err = ctypes.get_last_error()
+            raise OSError(err, "CreateWindowExW failed for Theme button")
+
         self.update_control_layout()
         self.update_display_layout()
         self.update_timer_labels()
         self.update_toggle_button()
+        self.update_theme_button()
 
     def register_hotkeys(self):
         user32.RegisterHotKey(self.control_hwnd, HOTKEY_TOGGLE, MOD_CONTROL | MOD_SHIFT, VK_S)
@@ -280,6 +299,39 @@ class TimerApp:
                 "Stop (Ctrl+Shift+S)" if self.model.running else "Start (Ctrl+Shift+S)",
             )
 
+    def update_theme_button(self):
+        if self.theme_hwnd:
+            user32.SetWindowTextW(self.theme_hwnd, "Theme: Dark" if self.use_dark_mode else "Theme: Light")
+
+    def refresh_theme_brushes(self):
+        self.cleanup_theme_resources()
+        if self.use_dark_mode:
+            self.background_brush, self.button_background_brush = create_dark_brushes()
+
+    def request_repaint(self, hwnd):
+        if hwnd:
+            user32.InvalidateRect(hwnd, None, True)
+            user32.UpdateWindow(hwnd)
+
+    def toggle_theme(self):
+        self.use_dark_mode = not self.use_dark_mode
+        self.refresh_theme_brushes()
+
+        if self.control_hwnd:
+            apply_windows11_window_style(self.control_hwnd, self.use_dark_mode)
+        if self.display_hwnd:
+            apply_windows11_window_style(self.display_hwnd, self.use_dark_mode)
+
+        self.update_theme_button()
+
+        self.request_repaint(self.control_hwnd)
+        self.request_repaint(self.display_hwnd)
+        self.request_repaint(self.control_label_hwnd)
+        self.request_repaint(self.display_label_hwnd)
+        self.request_repaint(self.toggle_hwnd)
+        self.request_repaint(self.reset_hwnd)
+        self.request_repaint(self.theme_hwnd)
+
     def update_timer_labels(self):
         text = self.model.formatted_time()
         if text == self.last_rendered_time_text:
@@ -315,7 +367,7 @@ class TimerApp:
         button_spacing = 12
         label_height = max(70, height - button_height - (padding * 3))
 
-        button_width = (width - (padding * 2) - button_spacing) // 2
+        button_width = (width - (padding * 2) - (button_spacing * 2)) // 3
 
         user32.MoveWindow(
             self.control_label_hwnd,
@@ -331,6 +383,14 @@ class TimerApp:
         user32.MoveWindow(
             self.reset_hwnd,
             padding + button_width + button_spacing,
+            button_y,
+            button_width,
+            button_height,
+            True,
+        )
+        user32.MoveWindow(
+            self.theme_hwnd,
+            padding + (button_width * 2) + (button_spacing * 2),
             button_y,
             button_width,
             button_height,
@@ -416,6 +476,8 @@ class TimerApp:
             self.toggle_timer()
         elif command_id == BTN_RESET_ID:
             self.reset_timer()
+        elif command_id == BTN_THEME_ID:
+            self.toggle_theme()
 
     def cleanup_window_resources(self, hwnd):
         if hwnd == self.control_hwnd:
@@ -426,6 +488,7 @@ class TimerApp:
             self.control_label_hwnd = None
             self.toggle_hwnd = None
             self.reset_hwnd = None
+            self.theme_hwnd = None
         elif hwnd == self.display_hwnd:
             if self.display_hfont:
                 gdi32.DeleteObject(self.display_hfont)
@@ -471,8 +534,20 @@ class TimerApp:
             self.initiate_shutdown()
             return 0
 
+        if msg == WM_ERASEBKGND and self.use_dark_mode and self.background_brush:
+            rect = RECT()
+            user32.GetClientRect(hwnd, ctypes.byref(rect))
+            user32.FillRect(wintypes.HDC(wparam), ctypes.byref(rect), self.background_brush)
+            return 1
+
         if msg == WM_SIZE:
-            if hwnd == self.control_hwnd and self.control_label_hwnd and self.toggle_hwnd and self.reset_hwnd:
+            if (
+                hwnd == self.control_hwnd
+                and self.control_label_hwnd
+                and self.toggle_hwnd
+                and self.reset_hwnd
+                and self.theme_hwnd
+            ):
                 self.update_control_layout()
             elif hwnd == self.display_hwnd and self.display_label_hwnd:
                 self.update_display_layout()

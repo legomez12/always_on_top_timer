@@ -107,6 +107,12 @@ def configure_winapi_signatures():
     user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT)]
     user32.GetClientRect.restype = wintypes.BOOL
 
+    user32.FillRect.argtypes = [wintypes.HDC, ctypes.POINTER(RECT), wintypes.HBRUSH]
+    user32.FillRect.restype = ctypes.c_int
+
+    user32.InvalidateRect.argtypes = [wintypes.HWND, wintypes.LPCRECT, wintypes.BOOL]
+    user32.InvalidateRect.restype = wintypes.BOOL
+
     user32.MoveWindow.argtypes = [
         wintypes.HWND,
         ctypes.c_int,
