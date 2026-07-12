@@ -86,7 +86,8 @@ class TimerApp:
 
         self.control_hfont = None
         self.display_hfont = None
-        self.button_hfont = None
+        self.top_row_button_hfont = None
+        self.bottom_row_button_hfont = None
 
         self.use_dark_mode = detect_windows_dark_mode()
         self.background_brush = None
@@ -559,10 +560,28 @@ class TimerApp:
         dpi = gdi32.GetDeviceCaps(hdc, 90)
         user32.ReleaseDC(window_hwnd, hdc)
 
-        # 60% of common 9pt UI button text size.
-        height_px = -int((9 * 0.6) * dpi / 72)
-        new_font = gdi32.CreateFontW(
-            height_px,
+        # Top row uses 100% default size, second row uses 60% for compact layout.
+        top_height_px = -int(9 * dpi / 72)
+        bottom_height_px = -int((9 * 0.6) * dpi / 72)
+
+        new_top_font = gdi32.CreateFontW(
+            top_height_px,
+            0,
+            0,
+            0,
+            400,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            "Segoe UI",
+        )
+        new_bottom_font = gdi32.CreateFontW(
+            bottom_height_px,
             0,
             0,
             0,
@@ -578,23 +597,30 @@ class TimerApp:
             "Segoe UI",
         )
 
-        if not new_font:
+        if not new_top_font or not new_bottom_font:
+            if new_top_font:
+                gdi32.DeleteObject(new_top_font)
+            if new_bottom_font:
+                gdi32.DeleteObject(new_bottom_font)
             return
 
-        old_font = self.button_hfont
-        self.button_hfont = new_font
-        for btn in [
-            self.toggle_hwnd,
-            self.reset_hwnd,
-            self.topmost_hwnd,
-            self.timer_window_toggle_hwnd,
-            self.display_toggle_hwnd,
-        ]:
-            if btn:
-                user32.SendMessageW(btn, WM_SETFONT, new_font, 1)
+        old_top_font = self.top_row_button_hfont
+        old_bottom_font = self.bottom_row_button_hfont
+        self.top_row_button_hfont = new_top_font
+        self.bottom_row_button_hfont = new_bottom_font
 
-        if old_font and old_font != new_font:
-            gdi32.DeleteObject(old_font)
+        for btn in [self.toggle_hwnd, self.reset_hwnd]:
+            if btn:
+                user32.SendMessageW(btn, WM_SETFONT, new_top_font, 1)
+
+        for btn in [self.topmost_hwnd, self.timer_window_toggle_hwnd, self.display_toggle_hwnd]:
+            if btn:
+                user32.SendMessageW(btn, WM_SETFONT, new_bottom_font, 1)
+
+        if old_top_font and old_top_font != new_top_font:
+            gdi32.DeleteObject(old_top_font)
+        if old_bottom_font and old_bottom_font != new_bottom_font:
+            gdi32.DeleteObject(old_bottom_font)
 
     def update_label_font(self, window_hwnd, label_hwnd, width, height, is_control_window):
         if is_control_window:
@@ -662,9 +688,12 @@ class TimerApp:
             self.topmost_hwnd = None
             self.timer_window_toggle_hwnd = None
             self.display_toggle_hwnd = None
-            if self.button_hfont:
-                gdi32.DeleteObject(self.button_hfont)
-                self.button_hfont = None
+            if self.top_row_button_hfont:
+                gdi32.DeleteObject(self.top_row_button_hfont)
+                self.top_row_button_hfont = None
+            if self.bottom_row_button_hfont:
+                gdi32.DeleteObject(self.bottom_row_button_hfont)
+                self.bottom_row_button_hfont = None
         elif hwnd == self.display_hwnd:
             if self.display_hfont:
                 gdi32.DeleteObject(self.display_hfont)
