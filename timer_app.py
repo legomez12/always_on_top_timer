@@ -204,7 +204,7 @@ class TimerApp:
         self.toggle_hwnd = user32.CreateWindowExW(
             0,
             "BUTTON",
-            "Start",
+            "Start (Ctrl+Shift+S)",
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             0,
             0,
@@ -222,7 +222,7 @@ class TimerApp:
         self.reset_hwnd = user32.CreateWindowExW(
             0,
             "BUTTON",
-            "Reset",
+            "Reset (Ctrl+Shift+R)",
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             0,
             0,
@@ -275,7 +275,10 @@ class TimerApp:
 
     def update_toggle_button(self):
         if self.toggle_hwnd:
-            user32.SetWindowTextW(self.toggle_hwnd, "Stop" if self.model.running else "Start")
+            user32.SetWindowTextW(
+                self.toggle_hwnd,
+                "Stop (Ctrl+Shift+S)" if self.model.running else "Start (Ctrl+Shift+S)",
+            )
 
     def update_timer_labels(self):
         text = self.model.formatted_time()
