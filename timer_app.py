@@ -469,8 +469,9 @@ class TimerApp:
 
         padding = 12
         button_height = 34
+        second_row_button_height = max(24, int(button_height * 0.8))
         button_spacing = 12
-        label_height = max(70, height - ((button_height * 2) + button_spacing + (padding * 3)))
+        label_height = max(70, height - (button_height + second_row_button_height + button_spacing + (padding * 3)))
 
         top_row_button_width = (width - (padding * 2) - button_spacing) // 2
         bottom_row_button_width = (width - (padding * 2) - (button_spacing * 2)) // 3
@@ -501,7 +502,7 @@ class TimerApp:
             padding,
             second_row_y,
             bottom_row_button_width,
-            button_height,
+            second_row_button_height,
             True,
         )
         user32.MoveWindow(
@@ -509,7 +510,7 @@ class TimerApp:
             padding + bottom_row_button_width + button_spacing,
             second_row_y,
             bottom_row_button_width,
-            button_height,
+            second_row_button_height,
             True,
         )
         user32.MoveWindow(
@@ -517,7 +518,7 @@ class TimerApp:
             padding + (bottom_row_button_width * 2) + (button_spacing * 2),
             second_row_y,
             bottom_row_button_width,
-            button_height,
+            second_row_button_height,
             True,
         )
 
