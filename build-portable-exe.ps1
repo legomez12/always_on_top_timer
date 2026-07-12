@@ -1,6 +1,6 @@
 param(
     [ValidateSet('onedir', 'onefile', 'both')]
-    [string]$Mode = 'both',
+    [string]$Mode = 'onefile',
     [switch]$Clean
 )
 
@@ -22,6 +22,8 @@ if ($Mode -eq 'onedir' -or $Mode -eq 'both') {
 }
 
 if ($Mode -eq 'onefile' -or $Mode -eq 'both') {
+    # If a previous onedir build exists, remove it so the onefile artifact is the only obvious output.
+    if (Test-Path "dist\\AlwaysOnTopTimer") { Remove-Item "dist\\AlwaysOnTopTimer" -Recurse -Force }
     Run-Command "uv run pyinstaller --noconfirm --clean --windowed --name AlwaysOnTopTimer --onefile always_on_top_timer.py"
 }
 
