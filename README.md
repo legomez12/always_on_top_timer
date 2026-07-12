@@ -87,3 +87,11 @@ Optional verification:
 3. Confirm the hash matches the checksum file entry.
 
 One file build: `v1.0.1` (2026-07-06)
+
+## Version Highlights
+
+- `v1.0.2`: Reduced UI flicker by lowering unnecessary redraw/topmost churn and updating timer refresh behavior.
+- `v1.1.0`: Added keyboard shortcut hints directly in button labels for clearer controls.
+- `v1.2.0`: Added a Dark/Light theme toggle with live UI repainting.
+- `v1.3.0`: Added Always On Top and Display visibility toggle controls.
+- `v1.3.1`: Replaced prior experimental layout changes with a corrected two-row button layout; second-row size/font are tuned to 70% via variables.
