@@ -27,8 +27,12 @@ Both windows are always on top, resizable, movable, and stay perfectly synchroni
 ## Requirements
 
 - Windows 10/11
-- Python 3.12+
+- Python 3.14+
 - `uv` recommended for environment and execution
+
+Note:
+
+- Python version requirements are defined by `pyproject.toml` and are the source of truth.
 
 ## Run
 
@@ -95,7 +99,9 @@ One file build: `v1.0.1` (2026-07-06)
 - `v1.2.0`: Added a Dark/Light theme toggle with live UI repainting.
 - `v1.3.0`: Added Always On Top and Display visibility toggle controls.
 - `v1.3.1`: Replaced prior experimental layout changes with a corrected two-row button layout; second-row size/font are tuned to 70% via variables.
+- `v1.3.2`: Improved code readability and constants clarity; reorganized `timer_constants.py` and enhanced native call argument clarity without changing runtime behavior.
 
 Note:
 
-- `v1.3.1` is the current active release with the corrected two-row layout.
+- `v1.3.1` was the prior active release with the corrected two-row layout.
+- `v1.3.2` is the current active release with improved readability and constants clarity.

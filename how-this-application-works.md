@@ -1,5 +1,70 @@
 # How This Application Works
 
+## Repository File Map (High-Level)
+
+This section lists the repository files/folders and their purpose.
+
+### Application Source Files
+
+1. `always_on_top_timer.py`: Program entry point; checks platform, configures Win32 signatures, starts `TimerApp`.
+2. `timer_app.py`: Main application controller; creates windows/controls, handles message loop, events, layout, and rendering.
+3. `timer_model.py`: Pure timer state/logic (start-stop-reset, elapsed time, formatting).
+4. `timer_constants.py`: Centralized Win32/app constants (messages, styles, IDs, colors, layout values).
+5. `win32_api.py`: Win32/DWM API loading, ctypes signatures, dark-mode detection, and style helpers.
+6. `win32_types.py`: ctypes structure/type definitions used by the Win32 layer.
+
+### Build and Packaging Files
+
+1. `build-portable-exe.ps1`: PowerShell build script for one-file/one-folder PyInstaller outputs.
+2. `always_on_top_timer.spec`: PyInstaller spec for one-folder build flow.
+3. `AlwaysOnTopTimer.spec`: PyInstaller spec variant for executable packaging.
+4. `pyproject.toml`: Project metadata, Python requirement, and dev dependencies.
+5. `uv.lock`: Locked dependency graph for reproducible `uv` environments.
+
+### Documentation and Metadata
+
+1. `README.md`: Project overview, usage, build/release notes.
+2. `how-this-application-works.md`: Additional architecture and behavior explanation.
+3. `LICENSE`: Open-source license text.
+4. `.gitattributes`: Git line-ending and attribute rules.
+5. `.gitignore`: Ignore rules for generated/local files.
+
+### Automation and Project Support
+
+1. `.github/`: CI/CD workflows (build validation and release automation).
+2. `.copilot-chat/`: Request/plan history and project memory notes.
+3. `.vscode/`: Local editor/workspace settings (developer convenience).
+
+### Generated/Local Runtime Artifacts
+
+1. `build/`: PyInstaller intermediate build artifacts.
+2. `dist/`: Packaged executable outputs.
+3. `.venv/`: Local virtual environment.
+4. `.mypy_cache/`: Type-check cache files.
+5. `__pycache__/`: Python bytecode caches.
+
+## File Load and Dependency Flow
+
+Indented view of what loads what at runtime:
+
+```text
+always_on_top_timer.py
+   -> win32_api.configure_winapi_signatures()
+          -> user32/gdi32/kernel32/dwmapi function signatures
+   -> TimerApp (timer_app.py)
+          -> imports timer_constants.py (message/style/ID values)
+          -> imports timer_model.py (timer behavior/state)
+          -> imports win32_api.py (API handles + style/dark-mode helpers)
+          -> imports win32_types.py (WNDPROC, WNDCLASSEXW, RECT, etc.)
+          -> creates Win32 windows and controls
+          -> runs message loop and handles events/hotkeys
+
+build-portable-exe.ps1
+   -> pyproject.toml/uv.lock (environment + dependencies)
+   -> always_on_top_timer.spec / AlwaysOnTopTimer.spec (PyInstaller build recipes)
+   -> dist/ (final packaged artifacts)
+```
+
 ## Architecture
 
 1. Entry point: always_on_top_timer.py

@@ -191,25 +191,37 @@ def detect_windows_dark_mode():
 
 
 def apply_windows11_window_style(hwnd, use_dark_mode):
+    def set_dwm_window_attribute(window_handle, attribute_id, value_pointer, value_size):
+        dwmapi.DwmSetWindowAttribute(
+            window_handle,
+            attribute_id,
+            value_pointer,
+            value_size,
+        )
+
     corner_pref = ctypes.c_int(DWMWCP_ROUND)
-    dwmapi.DwmSetWindowAttribute(
-        hwnd,
-        DWMWA_WINDOW_CORNER_PREFERENCE,
-        ctypes.byref(corner_pref),
-        ctypes.sizeof(corner_pref),
+    set_dwm_window_attribute(
+        window_handle=hwnd,
+        attribute_id=DWMWA_WINDOW_CORNER_PREFERENCE,
+        value_pointer=ctypes.byref(corner_pref),
+        value_size=ctypes.sizeof(corner_pref),
     )
+
     dark_mode = ctypes.c_int(1 if use_dark_mode else 0)
-    dwmapi.DwmSetWindowAttribute(
-        hwnd,
-        DWMWA_USE_IMMERSIVE_DARK_MODE,
-        ctypes.byref(dark_mode),
-        ctypes.sizeof(dark_mode),
+    dark_mode_ptr = ctypes.byref(dark_mode)
+    dark_mode_size = ctypes.sizeof(dark_mode)
+
+    set_dwm_window_attribute(
+        window_handle=hwnd,
+        attribute_id=DWMWA_USE_IMMERSIVE_DARK_MODE,
+        value_pointer=dark_mode_ptr,
+        value_size=dark_mode_size,
     )
-    dwmapi.DwmSetWindowAttribute(
-        hwnd,
-        DWMWA_USE_IMMERSIVE_DARK_MODE_OLD,
-        ctypes.byref(dark_mode),
-        ctypes.sizeof(dark_mode),
+    set_dwm_window_attribute(
+        window_handle=hwnd,
+        attribute_id=DWMWA_USE_IMMERSIVE_DARK_MODE_OLD,
+        value_pointer=dark_mode_ptr,
+        value_size=dark_mode_size,
     )
 
 
