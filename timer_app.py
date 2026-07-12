@@ -33,6 +33,8 @@ from timer_constants import (
     SWP_NOACTIVATE,
     SWP_NOMOVE,
     SWP_NOSIZE,
+    SECOND_ROW_BUTTON_FONT_SCALE,
+    SECOND_ROW_BUTTON_SIZE_SCALE,
     TIMER_ID,
     TIMER_INTERVAL_MS,
     TRANSPARENT,
@@ -86,6 +88,8 @@ class TimerApp:
 
         self.control_hfont = None
         self.display_hfont = None
+        self.top_row_button_hfont = None
+        self.bottom_row_button_hfont = None
 
         self.use_dark_mode = detect_windows_dark_mode()
         self.background_brush = None
@@ -462,10 +466,12 @@ class TimerApp:
 
         padding = 12
         button_height = 34
+        second_row_button_height = max(20, int(button_height * SECOND_ROW_BUTTON_SIZE_SCALE))
         button_spacing = 12
-        label_height = max(70, height - ((button_height * 2) + button_spacing + (padding * 3)))
+        label_height = max(70, height - (button_height + second_row_button_height + button_spacing + (padding * 3)))
 
-        button_width = (width - (padding * 2) - (button_spacing * 2)) // 3
+        top_row_button_width = (width - (padding * 2) - button_spacing) // 2
+        bottom_row_button_width = (width - (padding * 2) - (button_spacing * 2)) // 3
 
         user32.MoveWindow(
             self.control_label_hwnd,
@@ -477,41 +483,42 @@ class TimerApp:
         )
 
         button_y = padding * 2 + label_height
-        user32.MoveWindow(self.toggle_hwnd, padding, button_y, button_width, button_height, True)
+        user32.MoveWindow(self.toggle_hwnd, padding, button_y, top_row_button_width, button_height, True)
         user32.MoveWindow(
             self.reset_hwnd,
-            padding + button_width + button_spacing,
+            padding + top_row_button_width + button_spacing,
             button_y,
-            button_width,
-            button_height,
-            True,
-        )
-        user32.MoveWindow(
-            self.theme_hwnd,
-            padding + (button_width * 2) + (button_spacing * 2),
-            button_y,
-            button_width,
+            top_row_button_width,
             button_height,
             True,
         )
         second_row_y = button_y + button_height + button_spacing
-        two_button_width = (width - (padding * 2) - button_spacing) // 2
         user32.MoveWindow(
-            self.topmost_hwnd,
+            self.theme_hwnd,
             padding,
             second_row_y,
-            two_button_width,
-            button_height,
+            bottom_row_button_width,
+            second_row_button_height,
+            True,
+        )
+        user32.MoveWindow(
+            self.topmost_hwnd,
+            padding + bottom_row_button_width + button_spacing,
+            second_row_y,
+            bottom_row_button_width,
+            second_row_button_height,
             True,
         )
         user32.MoveWindow(
             self.display_toggle_hwnd,
-            padding + two_button_width + button_spacing,
+            padding + (bottom_row_button_width * 2) + (button_spacing * 2),
             second_row_y,
-            two_button_width,
-            button_height,
+            bottom_row_button_width,
+            second_row_button_height,
             True,
         )
+
+        self.update_button_font(self.control_hwnd)
 
         self.update_label_font(
             self.control_hwnd,
@@ -544,6 +551,72 @@ class TimerApp:
             height,
             is_control_window=False,
         )
+
+    def update_button_font(self, window_hwnd):
+        hdc = user32.GetDC(window_hwnd)
+        dpi = gdi32.GetDeviceCaps(hdc, 90)
+        user32.ReleaseDC(window_hwnd, hdc)
+
+        top_height_px = -int(9 * dpi / 72)
+        bottom_height_px = -int((9 * SECOND_ROW_BUTTON_FONT_SCALE) * dpi / 72)
+
+        new_top_font = gdi32.CreateFontW(
+            top_height_px,
+            0,
+            0,
+            0,
+            400,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            "Segoe UI",
+        )
+        new_bottom_font = gdi32.CreateFontW(
+            bottom_height_px,
+            0,
+            0,
+            0,
+            400,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            "Segoe UI",
+        )
+
+        if not new_top_font or not new_bottom_font:
+            if new_top_font:
+                gdi32.DeleteObject(new_top_font)
+            if new_bottom_font:
+                gdi32.DeleteObject(new_bottom_font)
+            return
+
+        old_top_font = self.top_row_button_hfont
+        old_bottom_font = self.bottom_row_button_hfont
+        self.top_row_button_hfont = new_top_font
+        self.bottom_row_button_hfont = new_bottom_font
+
+        for btn in [self.toggle_hwnd, self.reset_hwnd]:
+            if btn:
+                user32.SendMessageW(btn, WM_SETFONT, new_top_font, 1)
+
+        for btn in [self.theme_hwnd, self.topmost_hwnd, self.display_toggle_hwnd]:
+            if btn:
+                user32.SendMessageW(btn, WM_SETFONT, new_bottom_font, 1)
+
+        if old_top_font and old_top_font != new_top_font:
+            gdi32.DeleteObject(old_top_font)
+        if old_bottom_font and old_bottom_font != new_bottom_font:
+            gdi32.DeleteObject(old_bottom_font)
 
     def update_label_font(self, window_hwnd, label_hwnd, width, height, is_control_window):
         if is_control_window:
@@ -611,6 +684,12 @@ class TimerApp:
             self.theme_hwnd = None
             self.topmost_hwnd = None
             self.display_toggle_hwnd = None
+            if self.top_row_button_hfont:
+                gdi32.DeleteObject(self.top_row_button_hfont)
+                self.top_row_button_hfont = None
+            if self.bottom_row_button_hfont:
+                gdi32.DeleteObject(self.bottom_row_button_hfont)
+                self.bottom_row_button_hfont = None
         elif hwnd == self.display_hwnd:
             if self.display_hfont:
                 gdi32.DeleteObject(self.display_hfont)
