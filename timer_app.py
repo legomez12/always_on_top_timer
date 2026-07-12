@@ -5,7 +5,7 @@ from timer_constants import (
     BS_PUSHBUTTON,
     BTN_DISPLAY_ID,
     BTN_RESET_ID,
-    BTN_THEME_ID,
+    BTN_TIMER_WINDOW_ID,
     BTN_TOPMOST_ID,
     BTN_TOGGLE_ID,
     COLOR_WINDOW,
@@ -80,12 +80,13 @@ class TimerApp:
         self.display_label_hwnd = None
         self.toggle_hwnd = None
         self.reset_hwnd = None
-        self.theme_hwnd = None
         self.topmost_hwnd = None
+        self.timer_window_toggle_hwnd = None
         self.display_toggle_hwnd = None
 
         self.control_hfont = None
         self.display_hfont = None
+        self.button_hfont = None
 
         self.use_dark_mode = detect_windows_dark_mode()
         self.background_brush = None
@@ -245,24 +246,6 @@ class TimerApp:
             err = ctypes.get_last_error()
             raise OSError(err, "CreateWindowExW failed for Reset button")
 
-        self.theme_hwnd = user32.CreateWindowExW(
-            0,
-            "BUTTON",
-            "Theme: Dark",
-            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            0,
-            0,
-            100,
-            32,
-            self.control_hwnd,
-            ctypes.c_void_p(BTN_THEME_ID),
-            self.hinstance,
-            None,
-        )
-        if not self.theme_hwnd:
-            err = ctypes.get_last_error()
-            raise OSError(err, "CreateWindowExW failed for Theme button")
-
         self.topmost_hwnd = user32.CreateWindowExW(
             0,
             "BUTTON",
@@ -280,6 +263,24 @@ class TimerApp:
         if not self.topmost_hwnd:
             err = ctypes.get_last_error()
             raise OSError(err, "CreateWindowExW failed for Always-On-Top button")
+
+        self.timer_window_toggle_hwnd = user32.CreateWindowExW(
+            0,
+            "BUTTON",
+            "Timer Window: Close",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            0,
+            0,
+            100,
+            32,
+            self.control_hwnd,
+            ctypes.c_void_p(BTN_TIMER_WINDOW_ID),
+            self.hinstance,
+            None,
+        )
+        if not self.timer_window_toggle_hwnd:
+            err = ctypes.get_last_error()
+            raise OSError(err, "CreateWindowExW failed for Timer Window toggle button")
 
         self.display_toggle_hwnd = user32.CreateWindowExW(
             0,
@@ -303,8 +304,8 @@ class TimerApp:
         self.update_display_layout()
         self.update_timer_labels()
         self.update_toggle_button()
-        self.update_theme_button()
         self.update_always_on_top_button()
+        self.update_timer_window_toggle_button()
         self.update_display_toggle_button()
 
     def register_hotkeys(self):
@@ -362,15 +363,18 @@ class TimerApp:
                 "Stop (Ctrl+Shift+S)" if self.model.running else "Start (Ctrl+Shift+S)",
             )
 
-    def update_theme_button(self):
-        if self.theme_hwnd:
-            user32.SetWindowTextW(self.theme_hwnd, "Theme: Dark" if self.use_dark_mode else "Theme: Light")
-
     def update_always_on_top_button(self):
         if self.topmost_hwnd:
             user32.SetWindowTextW(
                 self.topmost_hwnd,
                 "Always On Top: On" if self.always_on_top_enabled else "Always On Top: Off",
+            )
+
+    def update_timer_window_toggle_button(self):
+        if self.timer_window_toggle_hwnd:
+            user32.SetWindowTextW(
+                self.timer_window_toggle_hwnd,
+                "Timer Window: Close" if self.display_visible else "Timer Window: Open",
             )
 
     def update_display_toggle_button(self):
@@ -397,7 +401,11 @@ class TimerApp:
             if self.always_on_top_enabled:
                 self.set_window_always_on_top(self.display_hwnd)
 
+        self.update_timer_window_toggle_button()
         self.update_display_toggle_button()
+
+    def toggle_timer_window(self):
+        self.toggle_display_window_visibility()
 
     def refresh_theme_brushes(self):
         self.cleanup_theme_resources()
@@ -418,16 +426,14 @@ class TimerApp:
         if self.display_hwnd:
             apply_windows11_window_style(self.display_hwnd, self.use_dark_mode)
 
-        self.update_theme_button()
-
         self.request_repaint(self.control_hwnd)
         self.request_repaint(self.display_hwnd)
         self.request_repaint(self.control_label_hwnd)
         self.request_repaint(self.display_label_hwnd)
         self.request_repaint(self.toggle_hwnd)
         self.request_repaint(self.reset_hwnd)
-        self.request_repaint(self.theme_hwnd)
         self.request_repaint(self.topmost_hwnd)
+        self.request_repaint(self.timer_window_toggle_hwnd)
         self.request_repaint(self.display_toggle_hwnd)
 
     def update_timer_labels(self):
@@ -465,7 +471,8 @@ class TimerApp:
         button_spacing = 12
         label_height = max(70, height - ((button_height * 2) + button_spacing + (padding * 3)))
 
-        button_width = (width - (padding * 2) - (button_spacing * 2)) // 3
+        top_row_button_width = (width - (padding * 2) - button_spacing) // 2
+        bottom_row_button_width = (width - (padding * 2) - (button_spacing * 2)) // 3
 
         user32.MoveWindow(
             self.control_label_hwnd,
@@ -477,41 +484,43 @@ class TimerApp:
         )
 
         button_y = padding * 2 + label_height
-        user32.MoveWindow(self.toggle_hwnd, padding, button_y, button_width, button_height, True)
+        user32.MoveWindow(self.toggle_hwnd, padding, button_y, top_row_button_width, button_height, True)
         user32.MoveWindow(
             self.reset_hwnd,
-            padding + button_width + button_spacing,
+            padding + top_row_button_width + button_spacing,
             button_y,
-            button_width,
+            top_row_button_width,
             button_height,
             True,
         )
-        user32.MoveWindow(
-            self.theme_hwnd,
-            padding + (button_width * 2) + (button_spacing * 2),
-            button_y,
-            button_width,
-            button_height,
-            True,
-        )
+
         second_row_y = button_y + button_height + button_spacing
-        two_button_width = (width - (padding * 2) - button_spacing) // 2
         user32.MoveWindow(
             self.topmost_hwnd,
             padding,
             second_row_y,
-            two_button_width,
+            bottom_row_button_width,
+            button_height,
+            True,
+        )
+        user32.MoveWindow(
+            self.timer_window_toggle_hwnd,
+            padding + bottom_row_button_width + button_spacing,
+            second_row_y,
+            bottom_row_button_width,
             button_height,
             True,
         )
         user32.MoveWindow(
             self.display_toggle_hwnd,
-            padding + two_button_width + button_spacing,
+            padding + (bottom_row_button_width * 2) + (button_spacing * 2),
             second_row_y,
-            two_button_width,
+            bottom_row_button_width,
             button_height,
             True,
         )
+
+        self.update_button_font(self.control_hwnd)
 
         self.update_label_font(
             self.control_hwnd,
@@ -544,6 +553,48 @@ class TimerApp:
             height,
             is_control_window=False,
         )
+
+    def update_button_font(self, window_hwnd):
+        hdc = user32.GetDC(window_hwnd)
+        dpi = gdi32.GetDeviceCaps(hdc, 90)
+        user32.ReleaseDC(window_hwnd, hdc)
+
+        # 60% of common 9pt UI button text size.
+        height_px = -int((9 * 0.6) * dpi / 72)
+        new_font = gdi32.CreateFontW(
+            height_px,
+            0,
+            0,
+            0,
+            400,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            "Segoe UI",
+        )
+
+        if not new_font:
+            return
+
+        old_font = self.button_hfont
+        self.button_hfont = new_font
+        for btn in [
+            self.toggle_hwnd,
+            self.reset_hwnd,
+            self.topmost_hwnd,
+            self.timer_window_toggle_hwnd,
+            self.display_toggle_hwnd,
+        ]:
+            if btn:
+                user32.SendMessageW(btn, WM_SETFONT, new_font, 1)
+
+        if old_font and old_font != new_font:
+            gdi32.DeleteObject(old_font)
 
     def update_label_font(self, window_hwnd, label_hwnd, width, height, is_control_window):
         if is_control_window:
@@ -592,10 +643,10 @@ class TimerApp:
             self.toggle_timer()
         elif command_id == BTN_RESET_ID:
             self.reset_timer()
-        elif command_id == BTN_THEME_ID:
-            self.toggle_theme()
         elif command_id == BTN_TOPMOST_ID:
             self.toggle_always_on_top()
+        elif command_id == BTN_TIMER_WINDOW_ID:
+            self.toggle_timer_window()
         elif command_id == BTN_DISPLAY_ID:
             self.toggle_display_window_visibility()
 
@@ -608,9 +659,12 @@ class TimerApp:
             self.control_label_hwnd = None
             self.toggle_hwnd = None
             self.reset_hwnd = None
-            self.theme_hwnd = None
             self.topmost_hwnd = None
+            self.timer_window_toggle_hwnd = None
             self.display_toggle_hwnd = None
+            if self.button_hfont:
+                gdi32.DeleteObject(self.button_hfont)
+                self.button_hfont = None
         elif hwnd == self.display_hwnd:
             if self.display_hfont:
                 gdi32.DeleteObject(self.display_hfont)
@@ -669,8 +723,8 @@ class TimerApp:
                 and self.control_label_hwnd
                 and self.toggle_hwnd
                 and self.reset_hwnd
-                and self.theme_hwnd
                 and self.topmost_hwnd
+                and self.timer_window_toggle_hwnd
                 and self.display_toggle_hwnd
             ):
                 self.update_control_layout()
