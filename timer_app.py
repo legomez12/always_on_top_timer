@@ -5,7 +5,7 @@ from timer_constants import (
     BS_PUSHBUTTON,
     BTN_DISPLAY_ID,
     BTN_RESET_ID,
-    BTN_THEME_ID,
+    BTN_TIMER_WINDOW_ID,
     BTN_TOPMOST_ID,
     BTN_TOGGLE_ID,
     COLOR_WINDOW,
@@ -82,12 +82,14 @@ class TimerApp:
         self.display_label_hwnd = None
         self.toggle_hwnd = None
         self.reset_hwnd = None
-        self.theme_hwnd = None
         self.topmost_hwnd = None
+        self.timer_window_toggle_hwnd = None
         self.display_toggle_hwnd = None
 
         self.control_hfont = None
         self.display_hfont = None
+        self.top_row_button_hfont = None
+        self.bottom_row_button_hfont = None
         self.top_row_button_hfont = None
         self.bottom_row_button_hfont = None
 
@@ -477,8 +479,8 @@ class TimerApp:
         self.update_display_layout()
         self.update_timer_labels()
         self.update_toggle_button()
-        self.update_theme_button()
         self.update_always_on_top_button()
+        self.update_timer_window_toggle_button()
         self.update_display_toggle_button()
 
     def register_hotkeys(self):
@@ -603,7 +605,11 @@ class TimerApp:
             if self.always_on_top_enabled:
                 self.set_window_always_on_top(self.display_hwnd)
 
+        self.update_timer_window_toggle_button()
         self.update_display_toggle_button()
+
+    def toggle_timer_window(self):
+        self.toggle_display_window_visibility()
 
     def refresh_theme_brushes(self):
         self.cleanup_theme_resources()
@@ -624,16 +630,14 @@ class TimerApp:
         if self.display_hwnd:
             apply_windows11_window_style(self.display_hwnd, self.use_dark_mode)
 
-        self.update_theme_button()
-
         self.request_repaint(self.control_hwnd)
         self.request_repaint(self.display_hwnd)
         self.request_repaint(self.control_label_hwnd)
         self.request_repaint(self.display_label_hwnd)
         self.request_repaint(self.toggle_hwnd)
         self.request_repaint(self.reset_hwnd)
-        self.request_repaint(self.theme_hwnd)
         self.request_repaint(self.topmost_hwnd)
+        self.request_repaint(self.timer_window_toggle_hwnd)
         self.request_repaint(self.display_toggle_hwnd)
 
     def update_timer_labels(self):
@@ -671,7 +675,10 @@ class TimerApp:
         second_row_button_height = max(20, int(button_height * SECOND_ROW_BUTTON_SIZE_SCALE))
         button_spacing = 12
         label_height = max(70, height - (button_height + second_row_button_height + button_spacing + (padding * 3)))
+        label_height = max(70, height - (button_height + second_row_button_height + button_spacing + (padding * 3)))
 
+        top_row_button_width = (width - (padding * 2) - button_spacing) // 2
+        bottom_row_button_width = (width - (padding * 2) - (button_spacing * 2)) // 3
         top_row_button_width = (width - (padding * 2) - button_spacing) // 2
         bottom_row_button_width = (width - (padding * 2) - (button_spacing * 2)) // 3
 
@@ -726,6 +733,8 @@ class TimerApp:
             height=second_row_button_height,
             repaint=True,
         )
+
+        self.update_button_font(self.control_hwnd)
 
         self.update_button_font(self.control_hwnd)
 
@@ -874,10 +883,10 @@ class TimerApp:
             self.toggle_timer()
         elif command_id == BTN_RESET_ID:
             self.reset_timer()
-        elif command_id == BTN_THEME_ID:
-            self.toggle_theme()
         elif command_id == BTN_TOPMOST_ID:
             self.toggle_always_on_top()
+        elif command_id == BTN_TIMER_WINDOW_ID:
+            self.toggle_timer_window()
         elif command_id == BTN_DISPLAY_ID:
             self.toggle_display_window_visibility()
 
@@ -890,8 +899,8 @@ class TimerApp:
             self.control_label_hwnd = None
             self.toggle_hwnd = None
             self.reset_hwnd = None
-            self.theme_hwnd = None
             self.topmost_hwnd = None
+            self.timer_window_toggle_hwnd = None
             self.display_toggle_hwnd = None
             if self.top_row_button_hfont:
                 self._gdi_delete_object(object_handle=self.top_row_button_hfont)
@@ -961,8 +970,8 @@ class TimerApp:
                 and self.control_label_hwnd
                 and self.toggle_hwnd
                 and self.reset_hwnd
-                and self.theme_hwnd
                 and self.topmost_hwnd
+                and self.timer_window_toggle_hwnd
                 and self.display_toggle_hwnd
             ):
                 self.update_control_layout()
